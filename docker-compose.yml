@@ -20,8 +20,8 @@ services:
       - "5432:5432"
     # This creates a named volume to persist the database data.
     # Even if the container is removed, the data in this volume will remain.
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    #volumes:
+      #- postgres_data:/var/lib/postgresql/data
     # This ensures the container will automatically restart if it crashes or the system reboots.
     restart: unless-stopped
 

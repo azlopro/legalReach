@@ -425,8 +425,8 @@
                     <span>✉️</span> Send Email to Selected
                 </button>
                 
-                <button class="btn btn-secondary" id="exportBtn" onclick="exportSelected()" disabled>
-                    <span>📤</span> Export Selected to CSV
+                <button class="btn btn-secondary" id="exportBtn" onclick="exportLeads()" disabled>
+                    <span>📤</span> Export All to CSV
                 </button>
             </div>
 
@@ -443,8 +443,7 @@
                         </tr>
                     </thead>
                     <tbody id="leadsTableBody">
-                        <!-- Leads will be populated here -->
-                    </tbody>
+                        </tbody>
                 </table>
                 
                 <div id="emptyState" class="empty-state" style="display: none;">
@@ -454,12 +453,10 @@
             </div>
 
             <div class="pagination" id="pagination">
-                <!-- Pagination will be populated here -->
-            </div>
+                </div>
         </div>
     </div>
 
-    <!-- Email Modal -->
     <div id="emailModal" class="modal">
         <div class="modal-content">
             <h2>Send Email to Selected Leads</h2>
@@ -481,41 +478,28 @@
         </div>
     </div>
 
-    <!-- Hidden file input -->
     <input type="file" id="csvFileInput" class="file-input" accept=".csv" onchange="handleFileUpload(event)">
 
     <script>
-        // Sample data for demonstration
-        let allLeads = [
-            { id: 1, name: "John Doe", email: "john@example.com", status: "new" },
-            { id: 2, name: "Jane Smith", email: "jane@example.com", status: "contacted" },
-            { id: 3, name: "Mike Johnson", email: "mike@example.com", status: "new" },
-            { id: 4, name: "Sarah Wilson", email: "sarah@example.com", status: "new" },
-            { id: 5, name: "David Brown", email: "david@example.com", status: "contacted" },
-            { id: 6, name: "Lisa Garcia", email: "lisa@example.com", status: "new" },
-            { id: 7, name: "Tom Anderson", email: "tom@example.com", status: "new" },
-            { id: 8, name: "Emily Davis", email: "emily@example.com", status: "contacted" }
-        ];
+        const API_BASE_URL = 'http://localhost:3000';
+        const API_KEY = 'your-secure-api-key-here'; // <-- IMPORTANT: Replace with your actual API key
 
-        let filteredLeads = [];
+        let allLeads = [];
+        let paginationInfo = {};
+        let currentView = 'new';
         let currentPage = 1;
-        let currentView = 'new'; // 'new' or 'contacted'
-        const leadsPerPage = 50;
+        let leadsPerPage = 50;
         let selectedLeads = new Set();
+        let currentSearchTerm = '';
 
-        // Initialize the app
         document.addEventListener('DOMContentLoaded', function() {
             setupEventListeners();
-            updateFilteredLeads();
-            renderLeads();
-            updateButtons();
-            updateTabCounts();
+            fetchLeads();
+            fetchStats();
         });
 
         function setupEventListeners() {
-            document.getElementById('searchInput').addEventListener('input', handleSearch);
-            
-            // Close modal when clicking outside
+            document.getElementById('searchInput').addEventListener('input', debounce(handleSearch, 300));
             document.getElementById('emailModal').addEventListener('click', function(e) {
                 if (e.target === this) {
                     closeEmailModal();
@@ -523,87 +507,98 @@
             });
         }
 
+        async function apiFetch(endpoint, options = {}) {
+            const defaultOptions = {
+                headers: {
+                    'Authorization': `Bearer ${API_KEY}`,
+                    'Accept': 'application/json',
+                }
+            };
+            
+            if (options.body && !(options.body instanceof FormData)) {
+                defaultOptions.headers['Content-Type'] = 'application/json';
+            }
+
+            const mergedOptions = { ...defaultOptions, ...options };
+            mergedOptions.headers = { ...defaultOptions.headers, ...options.headers };
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, mergedOptions);
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: { message: 'An unknown error occurred' } }));
+                    throw new Error(errorData.error.message || `HTTP error! status: ${response.status}`);
+                }
+                return response;
+            } catch (error) {
+                showNotification(error.message, 'error');
+                throw error;
+            }
+        }
+        
+        async function fetchLeads() {
+            try {
+                const response = await apiFetch(`/api/leads?status=${currentView}&search=${currentSearchTerm}&page=${currentPage}&per_page=${leadsPerPage}`);
+                const data = await response.json();
+                allLeads = data.data;
+                paginationInfo = data.pagination;
+                renderLeads();
+                updateButtons();
+            } catch (error) {
+                console.error('Failed to fetch leads:', error);
+            }
+        }
+        
+        async function fetchStats() {
+            try {
+                const response = await apiFetch('/api/leads/stats');
+                const stats = await response.json();
+                document.getElementById('newCount').textContent = stats.new_leads;
+                document.getElementById('contactedCount').textContent = stats.contacted_leads;
+            } catch (error) {
+                console.error('Failed to fetch stats:', error);
+            }
+        }
+        
         function switchView(view) {
             currentView = view;
             currentPage = 1;
             selectedLeads.clear();
-            
-            // Update tab appearance
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
             document.getElementById(view + 'Tab').classList.add('active');
-            
-            updateFilteredLeads();
-            renderLeads();
-            updateButtons();
+            fetchLeads();
         }
 
-        function updateFilteredLeads() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            
-            // Filter by current view first
-            let viewFilteredLeads = allLeads.filter(lead => lead.status === currentView);
-            
-            // Then apply search filter
-            if (searchTerm === '') {
-                filteredLeads = viewFilteredLeads;
-            } else {
-                filteredLeads = viewFilteredLeads.filter(lead => 
-                    lead.name.toLowerCase().includes(searchTerm) || 
-                    lead.email.toLowerCase().includes(searchTerm)
-                );
-            }
-        }
-
-        function updateTabCounts() {
-            const newCount = allLeads.filter(lead => lead.status === 'new').length;
-            const contactedCount = allLeads.filter(lead => lead.status === 'contacted').length;
-            
-            document.getElementById('newCount').textContent = newCount;
-            document.getElementById('contactedCount').textContent = contactedCount;
-        }
-
-        function handleSearch() {
-            updateFilteredLeads();
+        function handleSearch(event) {
+            currentSearchTerm = event.target.value;
             currentPage = 1;
-            selectedLeads.clear();
-            renderLeads();
-            updateButtons();
+            fetchLeads();
         }
 
         function renderLeads() {
             const tbody = document.getElementById('leadsTableBody');
             const emptyState = document.getElementById('emptyState');
-            
-            if (filteredLeads.length === 0) {
+            const table = document.querySelector('.table-container table');
+            const paginationEl = document.getElementById('pagination');
+
+            if (allLeads.length === 0) {
                 tbody.innerHTML = '';
                 emptyState.style.display = 'block';
+                table.style.display = 'none';
+                paginationEl.style.display = 'none';
                 
-                // Update empty state message based on current view
                 const emptyTitle = emptyState.querySelector('h3');
                 const emptyText = emptyState.querySelector('p');
+                emptyTitle.textContent = 'No leads found';
+                emptyText.textContent = currentSearchTerm ? `No results for "${currentSearchTerm}"` : `No ${currentView} leads. Try importing some!`;
                 
-                if (currentView === 'new') {
-                    emptyTitle.textContent = 'No new leads found';
-                    emptyText.textContent = 'Start by importing leads from a CSV file';
-                } else {
-                    emptyTitle.textContent = 'No contacted leads found';
-                    emptyText.textContent = 'Leads will appear here after you send emails to them';
-                }
-                
-                document.querySelector('.table-container table').style.display = 'none';
-                document.getElementById('pagination').style.display = 'none';
                 return;
             }
 
             emptyState.style.display = 'none';
-            document.querySelector('.table-container table').style.display = 'table';
-            document.getElementById('pagination').style.display = 'flex';
+            table.style.display = 'table';
+            paginationEl.style.display = 'flex';
 
-            const startIndex = (currentPage - 1) * leadsPerPage;
-            const endIndex = startIndex + leadsPerPage;
-            const pageLeads = filteredLeads.slice(startIndex, endIndex);
-
-            tbody.innerHTML = pageLeads.map(lead => `
+            tbody.innerHTML = allLeads.map(lead => `
                 <tr>
                     <td>
                         <input type="checkbox" 
@@ -614,7 +609,7 @@
                     <td>${lead.email}</td>
                     <td>
                         <span class="status-badge status-${lead.status}">
-                            ${lead.status === 'new' ? 'New' : 'Contacted'}
+                            ${lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
                         </span>
                     </td>
                 </tr>
@@ -626,31 +621,28 @@
 
         function renderPagination() {
             const pagination = document.getElementById('pagination');
-            const totalPages = Math.ceil(filteredLeads.length / leadsPerPage);
+            const { current_page, total_pages } = paginationInfo;
             
-            if (totalPages <= 1) {
+            if (total_pages <= 1) {
                 pagination.innerHTML = '';
                 return;
             }
 
             let paginationHTML = '';
             
-            // Previous button
-            if (currentPage > 1) {
-                paginationHTML += `<button class="page-btn" onclick="changePage(${currentPage - 1})">‹ Previous</button>`;
+            if (current_page > 1) {
+                paginationHTML += `<button class="page-btn" onclick="changePage(${current_page - 1})">‹ Previous</button>`;
             }
 
-            // Page numbers
-            const startPage = Math.max(1, currentPage - 2);
-            const endPage = Math.min(totalPages, currentPage + 2);
+            const startPage = Math.max(1, current_page - 2);
+            const endPage = Math.min(total_pages, current_page + 2);
 
             for (let i = startPage; i <= endPage; i++) {
-                paginationHTML += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="changePage(${i})">${i}</button>`;
+                paginationHTML += `<button class="page-btn ${i === current_page ? 'active' : ''}" onclick="changePage(${i})">${i}</button>`;
             }
 
-            // Next button
-            if (currentPage < totalPages) {
-                paginationHTML += `<button class="page-btn" onclick="changePage(${currentPage + 1})">Next ›</button>`;
+            if (current_page < total_pages) {
+                paginationHTML += `<button class="page-btn" onclick="changePage(${current_page + 1})">Next ›</button>`;
             }
 
             pagination.innerHTML = paginationHTML;
@@ -658,7 +650,7 @@
 
         function changePage(page) {
             currentPage = page;
-            renderLeads();
+            fetchLeads();
         }
 
         function toggleLead(leadId) {
@@ -673,38 +665,27 @@
 
         function toggleSelectAll() {
             const selectAllCheckbox = document.getElementById('selectAll');
-            const startIndex = (currentPage - 1) * leadsPerPage;
-            const endIndex = startIndex + leadsPerPage;
-            const pageLeads = filteredLeads.slice(startIndex, endIndex);
-
             if (selectAllCheckbox.checked) {
-                pageLeads.forEach(lead => selectedLeads.add(lead.id));
+                allLeads.forEach(lead => selectedLeads.add(lead.id));
             } else {
-                pageLeads.forEach(lead => selectedLeads.delete(lead.id));
+                allLeads.forEach(lead => selectedLeads.delete(lead.id));
             }
-
             renderLeads();
             updateButtons();
         }
 
         function updateSelectAllCheckbox() {
             const selectAllCheckbox = document.getElementById('selectAll');
-            const startIndex = (currentPage - 1) * leadsPerPage;
-            const endIndex = startIndex + leadsPerPage;
-            const pageLeads = filteredLeads.slice(startIndex, endIndex);
-            
-            if (pageLeads.length === 0) {
+            if (allLeads.length === 0) {
                 selectAllCheckbox.checked = false;
                 selectAllCheckbox.indeterminate = false;
                 return;
             }
-
-            const selectedCount = pageLeads.filter(lead => selectedLeads.has(lead.id)).length;
-            
+            const selectedCount = allLeads.filter(lead => selectedLeads.has(lead.id)).length;
             if (selectedCount === 0) {
                 selectAllCheckbox.checked = false;
                 selectAllCheckbox.indeterminate = false;
-            } else if (selectedCount === pageLeads.length) {
+            } else if (selectedCount === allLeads.length) {
                 selectAllCheckbox.checked = true;
                 selectAllCheckbox.indeterminate = false;
             } else {
@@ -717,23 +698,16 @@
             const sendEmailBtn = document.getElementById('sendEmailBtn');
             const exportBtn = document.getElementById('exportBtn');
             
-            // Send Email button should only be enabled in 'new' view with selections
-            if (currentView === 'new') {
-                sendEmailBtn.style.display = 'inline-flex';
-                sendEmailBtn.disabled = selectedLeads.size === 0;
-            } else {
-                sendEmailBtn.style.display = 'none';
-            }
-
-            // Export button is available in both views when leads are selected
-            exportBtn.disabled = selectedLeads.size === 0;
+            sendEmailBtn.style.display = currentView === 'new' ? 'inline-flex' : 'none';
+            sendEmailBtn.disabled = selectedLeads.size === 0;
+            exportBtn.disabled = allLeads.length === 0;
         }
 
         function triggerFileUpload() {
             document.getElementById('csvFileInput').click();
         }
 
-        function handleFileUpload(event) {
+        async function handleFileUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
 
@@ -742,76 +716,27 @@
                 return;
             }
 
-            // Show loading state
             const importBtn = document.querySelector('button[onclick="triggerFileUpload()"]');
             const originalHTML = importBtn.innerHTML;
             importBtn.innerHTML = '<span class="loading"></span> Importing...';
             importBtn.disabled = true;
 
-            // Simulate file processing
-            setTimeout(() => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    try {
-                        const csv = e.target.result;
-                        const lines = csv.split('\n').filter(line => line.trim());
-                        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-                        
-                        if (!headers.includes('name') || !headers.includes('email')) {
-                            throw new Error('CSV must contain "name" and "email" columns');
-                        }
-
-                        const nameIndex = headers.indexOf('name');
-                        const emailIndex = headers.indexOf('email');
-                        
-                        let addedCount = 0;
-                        let duplicateCount = 0;
-                        const existingEmails = new Set(allLeads.map(lead => lead.email.toLowerCase()));
-
-                        for (let i = 1; i < lines.length; i++) {
-                            const values = lines[i].split(',').map(v => v.trim());
-                            const name = values[nameIndex];
-                            const email = values[emailIndex];
-
-                            if (name && email && email.includes('@')) {
-                                if (existingEmails.has(email.toLowerCase())) {
-                                    duplicateCount++;
-                                } else {
-                                    const newLead = {
-                                        id: Date.now() + Math.random(),
-                                        name: name,
-                                        email: email,
-                                        status: 'new'
-                                    };
-                                    allLeads.push(newLead);
-                                    existingEmails.add(email.toLowerCase());
-                                    addedCount++;
-                                }
-                            }
-                        }
-
-                        if (addedCount > 0) {
-                            updateFilteredLeads();
-                            updateTabCounts();
-                            renderLeads();
-                            showNotification(`Success: ${addedCount} leads added${duplicateCount > 0 ? `, ${duplicateCount} duplicates skipped` : ''}.`, 'success');
-                        } else {
-                            showNotification('No new leads were added.', 'error');
-                        }
-
-                    } catch (error) {
-                        showNotification(`Error processing file: ${error.message}`, 'error');
-                    }
-
-                    // Reset button
-                    importBtn.innerHTML = originalHTML;
-                    importBtn.disabled = false;
-                };
-                reader.readAsText(file);
-            }, 1500);
-
-            // Clear the input
-            event.target.value = '';
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await apiFetch('/api/leads/import', { method: 'POST', body: formData });
+                const result = await response.json();
+                showNotification(`Import complete: ${result.imported_count} added, ${result.skipped_count} skipped.`, 'success');
+                fetchLeads();
+                fetchStats();
+            } catch (error) {
+                console.error('File upload failed:', error);
+            } finally {
+                importBtn.innerHTML = originalHTML;
+                importBtn.disabled = false;
+                event.target.value = '';
+            }
         }
 
         function openEmailModal() {
@@ -825,7 +750,7 @@
             document.getElementById('emailBody').value = '';
         }
 
-        function sendEmails() {
+        async function sendEmails() {
             const subject = document.getElementById('emailSubject').value.trim();
             const body = document.getElementById('emailBody').value.trim();
 
@@ -834,81 +759,56 @@
                 return;
             }
 
-            if (selectedLeads.size === 0) {
-                showNotification('No leads selected.', 'error');
-                return;
-            }
-
-            // Show loading state
             const sendBtn = document.querySelector('#emailModal .btn-primary');
             document.getElementById('sendBtnText').style.display = 'none';
             document.getElementById('sendBtnLoading').style.display = 'inline-block';
             sendBtn.disabled = true;
 
-            // Simulate API call
-            setTimeout(() => {
-                // Update lead statuses (all selected leads in 'new' view should become 'contacted')
-                Array.from(selectedLeads).forEach(leadId => {
-                    const lead = allLeads.find(l => l.id === leadId);
-                    if (lead && lead.status === 'new') {
-                        lead.status = 'contacted';
-                    }
+            try {
+                const response = await apiFetch('/api/email/send', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        lead_ids: Array.from(selectedLeads),
+                        subject,
+                        body,
+                    }),
                 });
-
-                // Clear selection and refresh current view
-                const emailedCount = selectedLeads.size;
+                const result = await response.json();
+                showNotification(`Email process finished: ${result.emails_sent} sent, ${result.emails_failed} failed.`, 'success');
                 selectedLeads.clear();
-                updateFilteredLeads();
-                updateTabCounts();
-                renderLeads();
-                updateButtons();
-                
-                // Reset modal and show success
                 closeEmailModal();
-                showNotification(`Email sent successfully to ${emailedCount} lead${emailedCount > 1 ? 's' : ''}.`, 'success');
-
-                // Reset button
+                fetchLeads();
+                fetchStats();
+            } catch (error) {
+                console.error('Failed to send emails:', error);
+            } finally {
                 document.getElementById('sendBtnText').style.display = 'inline';
                 document.getElementById('sendBtnLoading').style.display = 'none';
                 sendBtn.disabled = false;
-            }, 2000);
+            }
         }
 
-        function exportSelected() {
-            if (selectedLeads.size === 0) {
-                showNotification('No leads selected for export.', 'error');
-                return;
+        async function exportLeads() {
+            try {
+                const response = await apiFetch('/api/leads/export', { method: 'GET' });
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const contentDisposition = response.headers.get('content-disposition');
+                const filename = contentDisposition ? contentDisposition.split('filename=')[1].replace(/"/g, '') : 'leads_export.csv';
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                showNotification('Lead export started.', 'success');
+            } catch (error) {
+                console.error('Export failed:', error);
             }
-
-            const selectedLeadsData = Array.from(selectedLeads).map(id => 
-                allLeads.find(lead => lead.id === id)
-            ).filter(lead => lead);
-
-            // Create CSV content
-            const headers = ['Name', 'Email', 'Status'];
-            const csvContent = [
-                headers.join(','),
-                ...selectedLeadsData.map(lead => 
-                    `"${lead.name}","${lead.email}","${lead.status === 'new' ? 'New' : 'Contacted'}"`
-                )
-            ].join('\n');
-
-            // Create and download file
-            const blob = new Blob([csvContent], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `leads_export_${new Date().toISOString().split('T')[0]}.csv`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-
-            showNotification(`Exported ${selectedLeadsData.length} lead${selectedLeadsData.length > 1 ? 's' : ''} to CSV.`, 'success');
         }
 
         function showNotification(message, type) {
-            // Remove existing notifications
             const existingNotifications = document.querySelectorAll('.notification');
             existingNotifications.forEach(notif => notif.remove());
 
@@ -917,14 +817,20 @@
             notification.textContent = message;
             document.body.appendChild(notification);
 
-            // Show notification
             setTimeout(() => notification.classList.add('show'), 100);
-
-            // Hide notification after 4 seconds
             setTimeout(() => {
                 notification.classList.remove('show');
                 setTimeout(() => notification.remove(), 300);
             }, 4000);
+        }
+        
+        function debounce(func, delay) {
+            let timeout;
+            return function(...args) {
+                const context = this;
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(context, args), delay);
+            };
         }
     </script>
 </body>

@@ -15,13 +15,15 @@ pub fn parse_csv_from_multipart(data: &Bytes) -> Result<Vec<NewLead>> {
 
     // Get headers and validate required fields
     let headers = reader.headers()?.clone();
-    let name_index = find_header_index(&headers, &["name", "full_name", "fullname", "lead_name"])?;
-    let email_index = find_header_index(&headers, &["email", "email_address", "e_mail"])?;
+    
+    // ** UPDATED: Added "business name" and "e-mail" as valid headers **
+    let name_index = find_header_index(&headers, &["name", "full_name", "fullname", "lead_name", "business name"])?;
+    let email_index = find_header_index(&headers, &["email", "email_address", "e-mail"])?;
     
     // Optional fields
     let notes_index = find_optional_header_index(&headers, &["notes", "note", "comment", "comments"]);
     let source_index = find_optional_header_index(&headers, &["source", "lead_source", "origin"]);
-    let phone_index = find_optional_header_index(&headers, &["phone", "phone_number", "telephone", "mobile"]);
+    let phone_index = find_optional_header_index(&headers, &["phone", "phone_number", "telephone", "mobile", "phone number"]);
     let company_index = find_optional_header_index(&headers, &["company", "organization", "business", "employer"]);
 
     for (row_number, result) in reader.records().enumerate() {
@@ -137,7 +139,7 @@ pub fn generate_csv(leads: &[Lead]) -> Result<String> {
 fn find_header_index(headers: &csv::StringRecord, candidates: &[&str]) -> Result<usize> {
     for (i, header) in headers.iter().enumerate() {
         let header_lower = header.trim().to_lowercase();
-        if candidates.iter().any(|&candidate| header_lower == candidate) {
+        if candidates.iter().any(|&candidate| header_lower == *candidate) {
             return Ok(i);
         }
     }
@@ -152,7 +154,7 @@ fn find_header_index(headers: &csv::StringRecord, candidates: &[&str]) -> Result
 fn find_optional_header_index(headers: &csv::StringRecord, candidates: &[&str]) -> Option<usize> {
     for (i, header) in headers.iter().enumerate() {
         let header_lower = header.trim().to_lowercase();
-        if candidates.iter().any(|&candidate| header_lower == candidate) {
+        if candidates.iter().any(|&candidate| header_lower == *candidate) {
             return Some(i);
         }
     }

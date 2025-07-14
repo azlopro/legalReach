@@ -1,0 +1,37 @@
+# Default server configuration
+[server]
+host = "127.0.0.1"
+port = 3000
+cors_origins = ["http://localhost:3000"]
+max_request_size = 10485760 # 10MB in bytes
+
+# Default database configuration
+[database]
+host = "localhost"
+port = 5432
+username = "lead_manager_user"
+password = "lead_manager_password"
+database_name = "lead_management"
+max_connections = 10
+
+# Default authentication configuration
+[auth]
+api_key = "your-secure-api-key-here"
+session_timeout_hours = 24
+
+# Default email configuration
+[email]
+smtp_host = "smtp.gmail.com"
+smtp_port = 587
+smtp_username = "your-email@gmail.com"
+smtp_password = "your-app-password"
+from_email = "your-email@gmail.com"
+from_name = "Lead Management System"
+mock_mode = true # Set to false for real emails
+
+# Default feature flags
+[features]
+enable_email_sending = true
+max_leads_per_import = 1000
+max_leads_per_export = 10000
+enable_rate_limiting = true

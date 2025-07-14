@@ -6,10 +6,6 @@ mod services;
 
 use axum::{
     extract::DefaultBodyLimit,
-    http::{
-        header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
-        HeaderValue, Method,
-    },
     middleware,
     routing::{get, post},
     Router,
@@ -18,7 +14,7 @@ use deadpool_postgres::Pool;
 use std::net::SocketAddr;
 use tower::ServiceBuilder;
 use tower_http::{
-    cors::CorsLayer,
+    cors::{Any, CorsLayer}, // <-- Import Any
     trace::TraceLayer,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -89,20 +85,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         lead_repository,
     };
 
-    // Build CORS layer
-    let cors_origins: Result<Vec<HeaderValue>, _> = config
-        .server
-        .cors_origins
-        .iter()
-        .map(|origin| origin.parse::<HeaderValue>())
-        .collect();
-
+    // **CORRECTED CORS LAYER**
     let cors = CorsLayer::new()
-        .allow_origin(
-            cors_origins.unwrap_or_else(|_| vec!["*".parse().unwrap()])
-        )
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-        .allow_headers([AUTHORIZATION, ACCEPT, CONTENT_TYPE]);
+        .allow_origin(Any) // Allow any origin
+        .allow_methods(Any) // Allow any method
+        .allow_headers(Any); // Allow any header
 
     // Build the application router
     let app = Router::new()
@@ -118,19 +105,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/leads/import", post(import_leads_csv))
         .route("/api/leads/export", get(export_leads_csv))
         .route("/api/leads/bulk-update", post(bulk_update_leads))
-        .route("/api/leads/:id", get(get_lead))
-        .route("/api/leads/:id/update", post(update_lead))
+        .route("/api/leads/{id}", get(get_lead))
+        .route("/api/leads/{id}/update", post(update_lead))
         
         // Email routes (auth required)
         .route("/api/email/send", post(send_emails))
         .route("/api/email/test", post(test_email_config))
-        .route("/api/email/logs/:lead_id", get(get_email_logs))
+        .route("/api/email/logs/{lead_id}", get(get_email_logs))
         
         // Middleware stack
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())
-                .layer(cors)
+                .layer(cors) // Apply the corrected CORS layer
                 .layer(DefaultBodyLimit::max(config.server.max_request_size))
                 .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
         )
