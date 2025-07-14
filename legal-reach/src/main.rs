@@ -1,84 +1,192 @@
-// src/main.rs
-// This file demonstrates how to use the role-based access system.
+mod config;
+mod database;
+mod errors;
+mod handlers;
+mod services;
 
-// This tells Rust to look for a `db.rs` or `db/mod.rs` file.
-mod db;
-mod apperr;
+use axum::{
+    extract::DefaultBodyLimit,
+    http::{
+        header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
+        HeaderValue, Method,
+    },
+    middleware,
+    routing::{delete, get, post, put},
+    Router,
+};
+use deadpool_postgres::Pool;
+use std::net::SocketAddr;
+use tower::ServiceBuilder;
+use tower_http::{
+    cors::{Any, CorsLayer},
+    trace::TraceLayer,
+};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-// Import the necessary structs and enums from our db module.
-use crate::db::{Config, Database, User, UserRole};
-use crate::apperr::AppError;
-use std::error::Error;
+use crate::{
+    config::Settings,
+    database::{repository::LeadRepository, create_pool},
+    handlers::{
+        auth_middleware,
+        leads::*,
+        email::*,
+        health::*,
+    },
+};
+
+#[derive(Clone)]
+pub struct AppState {
+    pub config: Settings,
+    pub pool: Pool,
+    pub lead_repository: LeadRepository,
+}
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    // --- Configuration ---
-    // In a real-world application, you would load this from a configuration file
-    // or environment variables, not hardcode it.
-    let config = Config {
-        host: "localhost".to_string(),
-        user: "lead_manager_user".to_string(),
-        password: "lead_manager_password".to_string(),
-        dbname: "lead_management".to_string(),
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize tracing
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "legal_reach=debug,tower_http=debug".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    // Load configuration
+    let config = Settings::new().map_err(|e| {
+        tracing::error!("Failed to load configuration: {}", e);
+        e
+    })?;
+
+    tracing::info!("Starting Legal Reach API server...");
+    tracing::info!("Configuration loaded successfully");
+
+    // Create database pool
+    let pool = create_pool(&config).await.map_err(|e| {
+        tracing::error!("Failed to create database pool: {}", e);
+        e
+    })?;
+
+    tracing::info!("Database connection pool created successfully");
+
+    // Test email configuration if enabled
+    if config.features.enable_email_sending && !config.email.mock_mode {
+        if let Err(e) = services::email_service::test_email_connection(&config).await {
+            tracing::warn!("Email connection test failed: {}. Continuing with email disabled.", e);
+        }
+    }
+
+    // Create repositories
+    let lead_repository = LeadRepository::new(pool.clone());
+
+    // Create application state
+    let state = AppState {
+        config: config.clone(),
+        pool,
+        lead_repository,
     };
 
-    // --- Database Connection ---
-    // Connect to the database. If it fails, the error will be propagated up by `?`.
-    let db = Database::connect(config).await?;
+    // Build CORS layer
+    let cors = CorsLayer::new()
+        .allow_origin(
+            config
+                .server
+                .cors_origins
+                .iter()
+                .map(|origin| origin.parse::<HeaderValue>())
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap_or_else(|_| vec![Any::default()])
+        )
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+        .allow_headers([AUTHORIZATION, ACCEPT, CONTENT_TYPE]);
 
-    // --- User Simulation ---
-    // In a real application, user data would come from a login or authentication system.
-    let manager_user = User {
-        username: "Alice".to_string(),
-        role: UserRole::Manager,
-    };
-    let viewer_user = User {
-        username: "Bob".to_string(),
-        role: UserRole::Viewer,
-    };
+    // Build the application router
+    let app = Router::new()
+        // Health check routes (no auth required)
+        .route("/health", get(health_check))
+        .route("/health/detailed", get(detailed_health_check))
+        .route("/health/readiness", get(readiness_check))
+        .route("/health/liveness", get(liveness_check))
+        
+        // API routes (auth required)
+        .route("/api/leads", get(get_leads).post(create_lead))
+        .route("/api/leads/stats", get(get_lead_stats))
+        .route("/api/leads/import", post(import_leads_csv))
+        .route("/api/leads/export", get(export_leads_csv))
+        .route("/api/leads/bulk-update", post(bulk_update_leads))
+        .route("/api/leads/:id", get(get_lead).put(update_lead).delete(delete_lead))
+        
+        // Email routes (auth required)
+        .route("/api/email/send", post(send_emails))
+        .route("/api/email/test", post(test_email_config))
+        .route("/api/email/logs/:lead_id", get(get_email_logs))
+        
+        // Middleware stack
+        .layer(
+            ServiceBuilder::new()
+                .layer(TraceLayer::new_for_http())
+                .layer(cors)
+                .layer(DefaultBodyLimit::max(config.server.max_request_size))
+                .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
+        )
+        .with_state(state);
 
-    println!("\n--- Running simulations as Viewer: {} ---", viewer_user.username);
+    // Create server address
+    let addr = SocketAddr::from(([0, 0, 0, 0], config.server.port));
     
-    // 1. Viewer tries to add a lead. This action should be denied.
-    let viewer_add_result = db.add_lead(&viewer_user, "Viewer Added Lead", "viewer@example.com").await;
-    match viewer_add_result {
-        Ok(_) => println!("Viewer successfully added a lead (this should not happen)."),
-        Err(AppError::PermissionDenied(msg)) => println!("Viewer failed to add lead as expected. Error: {}", msg),
-        Err(e) => eprintln!("An unexpected error occurred: {}", e),
-    }
+    tracing::info!("Server starting on {}", addr);
+    tracing::info!("API Documentation:");
+    tracing::info!("  Health Check: GET /health");
+    tracing::info!("  Leads API: GET/POST /api/leads");
+    tracing::info!("  Email API: POST /api/email/send");
+    tracing::info!("  CSV Import: POST /api/leads/import");
+    tracing::info!("  CSV Export: GET /api/leads/export");
 
-    // 2. Viewer fetches all leads. This action should be permitted.
-    match db.get_all_leads(&viewer_user).await {
-        Ok(leads) => println!("Viewer successfully fetched {} leads.", leads.len()),
-        Err(e) => println!("Viewer failed to fetch leads: {}", e),
-    }
-
-    println!("\n--- Running simulations as Manager: {} ---", manager_user.username);
-    let manager_lead_name = "Managed Lead";
-    let manager_lead_email = "manager@example.com";
-
-    // 3. Manager adds a new lead. This action should be permitted.
-    // We first check if the lead exists to provide a cleaner output.
-    if !db.lead_exists(&manager_user, manager_lead_email).await? {
-        match db.add_lead(&manager_user, manager_lead_name, manager_lead_email).await {
-            Ok(_) => println!("Manager successfully added a new lead: '{}'", manager_lead_name),
-            Err(e) => println!("Manager failed to add lead: {}", e),
-        }
-    } else {
-        println!("Lead '{}' already exists.", manager_lead_name);
-    }
-
-    // 4. Manager fetches a specific lead. This action should be permitted.
-    match db.get_lead(&manager_user, manager_lead_email).await {
-        Ok(Some(lead)) => {
-            println!(
-                "Manager successfully fetched lead -> ID: {}, Name: {}, Email: {}, Joined: {}",
-                lead.id, lead.name, lead.email, lead.created_at
-            );
-        }
-        Ok(None) => println!("Manager could not find the lead."),
-        Err(e) => println!("Manager failed to fetch lead: {}", e),
-    }
+    // Start the server
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app)
+        .await
+        .map_err(|e| {
+            tracing::error!("Server error: {}", e);
+            e
+        })?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum_test::TestServer;
+    use serde_json::json;
+
+    async fn create_test_app() -> TestServer {
+        let config = Settings::default();
+        let pool = create_pool(&config).await.unwrap();
+        let lead_repository = LeadRepository::new(pool.clone());
+        
+        let state = AppState {
+            config,
+            pool,
+            lead_repository,
+        };
+
+        let app = Router::new()
+            .route("/health", get(health_check))
+            .with_state(state);
+
+        TestServer::new(app).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_health_check() {
+        let server = create_test_app().await;
+        
+        let response = server.get("/health").await;
+        
+        assert_eq!(response.status_code(), 200);
+        
+        let body: serde_json::Value = response.json();
+        assert_eq!(body["status"], "ok");
+    }
 }
