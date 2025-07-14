@@ -51,7 +51,7 @@ pub struct Lead {
     pub company: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NewLead {
     pub name: String,
     pub email: String,

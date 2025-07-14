@@ -45,7 +45,6 @@ impl LeadRepository {
     }
 
     pub async fn bulk_create_leads(&self, leads: Vec<NewLead>) -> Result<Vec<Lead>> {
-        let client = self.pool.get().await?;
         let mut created_leads = Vec::new();
         
         for lead in leads {

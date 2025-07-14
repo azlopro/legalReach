@@ -1,4 +1,4 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 use crate::{
@@ -62,7 +62,7 @@ pub async fn send_emails(
     }
 
     // Send emails and track results
-    let (emails_sent, emails_failed, errors) = send_email_to_leads(
+    let (emails_sent, _emails_failed, errors) = send_email_to_leads(
         &state.config,
         &leads,
         &request.subject,
@@ -108,7 +108,7 @@ pub async fn send_emails(
 
     Ok(Json(SendEmailResponse {
         emails_sent,
-        emails_failed,
+        emails_failed: errors.len(),
         errors,
     }))
 }
@@ -155,7 +155,7 @@ pub async fn test_email_config(
     let test_subject = "Email Configuration Test";
     let test_body = "This is a test email to verify your email configuration is working correctly.";
 
-    let (emails_sent, emails_failed, errors) = send_email_to_leads(
+    let (emails_sent, _emails_failed, errors) = send_email_to_leads(
         &state.config,
         &vec![test_lead],
         test_subject,

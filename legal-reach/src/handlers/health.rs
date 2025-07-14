@@ -1,5 +1,5 @@
 use axum::{extract::State, Json};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use crate::{errors::Result, AppState};
 
 #[derive(Debug, Serialize)]
@@ -60,7 +60,7 @@ pub async fn detailed_health_check(
             connection_pool: ConnectionPoolHealth {
                 active_connections: pool_status.size,
                 idle_connections: pool_status.available,
-                max_connections: pool_status.max_size,
+                max_connections: pool_status.max_size as u32,
             },
         },
         features: FeatureHealth {

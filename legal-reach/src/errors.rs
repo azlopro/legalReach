@@ -14,6 +14,9 @@ pub enum AppError {
     #[error("Database pool error: {0}")]
     DatabasePool(#[from] deadpool_postgres::PoolError),
     
+    #[error("Database config error: {0}")]
+    DatabaseConfig(#[from] deadpool::managed::CreatePoolError<deadpool_postgres::ConfigError>),
+    
     #[error("Validation error: {message}")]
     Validation { message: String },
     
@@ -38,6 +41,9 @@ pub enum AppError {
     #[error("Email error: {0}")]
     Email(#[from] lettre::error::Error),
     
+    #[error("SMTP transport error: {0}")]
+    SmtpTransport(#[from] lettre::transport::smtp::Error),
+    
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
     
@@ -56,7 +62,7 @@ impl IntoResponse for AppError {
             AppError::Unauthorized { message } => (StatusCode::UNAUTHORIZED, message.clone()),
             AppError::Forbidden { message } => (StatusCode::FORBIDDEN, message.clone()),
             AppError::Conflict { message } => (StatusCode::CONFLICT, message.clone()),
-            AppError::Database(_) | AppError::DatabasePool(_) => {
+            AppError::Database(_) | AppError::DatabasePool(_) | AppError::DatabaseConfig(_) => {
                 tracing::error!("Database error: {}", self);
                 (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
             }

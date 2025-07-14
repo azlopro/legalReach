@@ -5,9 +5,6 @@ use deadpool_postgres::{Config, Pool, Runtime};
 use tokio_postgres::NoTls;
 use crate::{config::Settings, errors::Result};
 
-pub use models::*;
-pub use repository::*;
-
 pub async fn create_pool(settings: &Settings) -> Result<Pool> {
     let mut cfg = Config::new();
     cfg.host = Some(settings.database.host.clone());

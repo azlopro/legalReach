@@ -118,10 +118,10 @@ pub fn generate_csv(leads: &[Lead]) -> Result<String> {
             lead.status.to_string(),
             lead.created_at.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
             lead.updated_at.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
-            lead.notes.as_deref().unwrap_or(""),
-            lead.source.as_deref().unwrap_or(""),
-            lead.phone.as_deref().unwrap_or(""),
-            lead.company.as_deref().unwrap_or(""),
+            lead.notes.as_deref().unwrap_or("").to_string(),
+            lead.source.as_deref().unwrap_or("").to_string(),
+            lead.phone.as_deref().unwrap_or("").to_string(),
+            lead.company.as_deref().unwrap_or("").to_string(),
         ])?;
     }
 

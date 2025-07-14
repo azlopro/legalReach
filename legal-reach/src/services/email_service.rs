@@ -34,7 +34,8 @@ async fn send_real_emails(
         config.email.smtp_password.clone(),
     );
 
-    let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.email.smtp_host)?
+    let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.email.smtp_host)
+        .map_err(|e| AppError::SmtpTransport(e))?
         .port(config.email.smtp_port)
         .credentials(creds)
         .pool_config(PoolConfig::new().max_size(5))
@@ -94,7 +95,7 @@ async fn send_single_email(
     mailer
         .send(email)
         .await
-        .map_err(|e| AppError::Email(e.into()))?;
+        .map_err(|e| AppError::SmtpTransport(e))?;
 
     Ok(())
 }
@@ -152,7 +153,8 @@ pub async fn test_email_connection(config: &Settings) -> Result<()> {
         config.email.smtp_password.clone(),
     );
 
-    let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.email.smtp_host)?
+    let mailer: AsyncSmtpTransport<Tokio1Executor> = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.email.smtp_host)
+        .map_err(|e| AppError::SmtpTransport(e))?
         .port(config.email.smtp_port)
         .credentials(creds)
         .timeout(Some(std::time::Duration::from_secs(10)))
