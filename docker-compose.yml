@@ -1,0 +1,30 @@
+services:
+  # This is the service definition for our PostgreSQL database.
+  postgres_db:
+    # We are using the official postgres image from Docker Hub.
+    # The '14-alpine' tag specifies version 14, using a lightweight Alpine Linux base.
+    image: postgres:17-alpine
+    # This section sets environment variables inside the container.
+    # These are used by the postgres image to initialize the database.
+    environment:
+      # Sets the username for the default superuser.
+      POSTGRES_USER: lead_manager_user
+      # Sets the password for the default superuser.
+      # IMPORTANT: For production, use a more secure password, preferably from a secret management tool.
+      POSTGRES_PASSWORD: lead_manager_password
+      # Sets the name of the default database to create.
+      POSTGRES_DB: lead_management
+    # This maps a port on your host machine to a port inside the container.
+    # You will connect to the database from your Rust application on localhost:5432.
+    ports:
+      - "5432:5432"
+    # This creates a named volume to persist the database data.
+    # Even if the container is removed, the data in this volume will remain.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # This ensures the container will automatically restart if it crashes or the system reboots.
+    restart: unless-stopped
+
+# This defines the named volume we referenced above.
+volumes:
+  postgres_data:
