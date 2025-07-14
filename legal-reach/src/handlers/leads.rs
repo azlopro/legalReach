@@ -1,15 +1,15 @@
+// Simplified handlers/leads.rs that should work
 use axum::{
-    extract::{Path, State, Multipart},
+    extract::{Path, State, Multipart, Query},
     http::{StatusCode, HeaderMap, header},
-    response::{IntoResponse, Response},
+    response::IntoResponse,
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use validator::Validate;
 use crate::{
     database::models::*,
-    errors::{AppError, Result},
+    errors::AppError,
     services::csv_service::{parse_csv_from_multipart, generate_csv},
     AppState,
 };
@@ -78,21 +78,42 @@ pub struct LeadStatsResponse {
     pub lost_leads: i64,
 }
 
-// GET /api/leads - Get leads with filtering and pagination (simplified)
+#[derive(Debug, Deserialize)]
+pub struct LeadsQueryParams {
+    pub status: Option<String>,
+    pub search: Option<String>,
+    pub source: Option<String>,
+    pub page: Option<u32>,
+    pub per_page: Option<u32>,
+}
+
+// GET /api/leads - Get leads with filtering and pagination
 pub async fn get_leads(
     State(state): State<AppState>,
-) -> Result<Json<PaginatedResponse<Lead>>> {
+    Query(params): Query<LeadsQueryParams>,
+) -> Result<Json<PaginatedResponse<Lead>>, AppError> {
+    let status = params.status.and_then(|s| {
+        match s.to_lowercase().as_str() {
+            "new" => Some(LeadStatus::New),
+            "contacted" => Some(LeadStatus::Contacted),
+            "qualified" => Some(LeadStatus::Qualified),
+            "converted" => Some(LeadStatus::Converted),
+            "lost" => Some(LeadStatus::Lost),
+            _ => None,
+        }
+    });
+
     let filters = LeadFilters {
-        status: None,
-        search: None,
-        source: None,
+        status,
+        search: params.search,
+        source: params.source,
         created_after: None,
         created_before: None,
     };
 
     let pagination = PaginationParams {
-        page: Some(1),
-        per_page: Some(50),
+        page: params.page.or(Some(1)),
+        per_page: params.per_page.or(Some(50)),
     };
 
     let result = state.lead_repository.get_leads(filters, pagination).await?;
@@ -103,7 +124,7 @@ pub async fn get_leads(
 pub async fn get_lead(
     State(state): State<AppState>,
     Path(id): Path<i32>,
-) -> Result<Json<Lead>> {
+) -> Result<Json<Lead>, AppError> {
     let lead = state
         .lead_repository
         .get_lead_by_id(id)
@@ -117,7 +138,7 @@ pub async fn get_lead(
 pub async fn create_lead(
     State(state): State<AppState>,
     Json(request): Json<CreateLeadRequest>,
-) -> Result<impl IntoResponse> {
+) -> Result<(StatusCode, Json<Lead>), AppError> {
     // Validate the request
     request.validate().map_err(|e| {
         AppError::validation(format!("Validation failed: {}", e))
@@ -137,12 +158,12 @@ pub async fn create_lead(
     Ok((StatusCode::CREATED, Json(lead)))
 }
 
-// POST /api/leads/:id - Update a lead (using POST instead of PUT to avoid trait issues)
+// POST /api/leads/:id/update - Update a lead
 pub async fn update_lead(
     State(state): State<AppState>,
     Path(id): Path<i32>,
     Json(request): Json<UpdateLeadRequest>,
-) -> Result<Json<Lead>> {
+) -> Result<Json<Lead>, AppError> {
     // Validate the request
     request.validate().map_err(|e| {
         AppError::validation(format!("Validation failed: {}", e))
@@ -170,7 +191,7 @@ pub async fn update_lead(
 pub async fn bulk_update_leads(
     State(state): State<AppState>,
     Json(request): Json<BulkUpdateRequest>,
-) -> Result<Json<serde_json::Value>> {
+) -> Result<Json<serde_json::Value>, AppError> {
     if request.lead_ids.is_empty() {
         return Err(AppError::validation("No lead IDs provided"));
     }
@@ -194,14 +215,20 @@ pub async fn bulk_update_leads(
 pub async fn import_leads_csv(
     State(state): State<AppState>,
     mut multipart: Multipart,
-) -> Result<Json<BulkImportResponse>> {
+) -> Result<Json<BulkImportResponse>, AppError> {
     let mut imported_count = 0;
     let mut skipped_count = 0;
     let mut errors = Vec::new();
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
-        AppError::validation(format!("Failed to read multipart data: {}", e))
-    })? {
+    loop {
+        let field = match multipart.next_field().await {
+            Ok(Some(field)) => field,
+            Ok(None) => break,
+            Err(e) => {
+                return Err(AppError::validation(format!("Failed to read multipart data: {}", e)));
+            }
+        };
+
         let name = field.name().unwrap_or("").to_string();
         
         if name == "file" {
@@ -226,7 +253,6 @@ pub async fn import_leads_csv(
                 )));
             }
 
-            // Attempt to create each lead
             for new_lead in new_leads {
                 match state.lead_repository.create_lead(new_lead.clone()).await {
                     Ok(_) => imported_count += 1,
@@ -239,7 +265,6 @@ pub async fn import_leads_csv(
                     }
                 }
             }
-
             break;
         }
     }
@@ -251,11 +276,10 @@ pub async fn import_leads_csv(
     }))
 }
 
-// GET /api/leads/export - Export leads to CSV (simplified - exports all leads)
+// GET /api/leads/export - Export leads to CSV
 pub async fn export_leads_csv(
     State(state): State<AppState>,
-) -> Result<Response> {
-    // Get all leads for simplicity
+) -> Result<impl IntoResponse, AppError> {
     let all_leads = state.lead_repository.get_leads(
         LeadFilters {
             status: None,
@@ -266,7 +290,7 @@ pub async fn export_leads_csv(
         },
         PaginationParams {
             page: Some(1),
-            per_page: Some(10000), // Large number to get all leads
+            per_page: Some(10000),
         },
     ).await?;
 
@@ -276,32 +300,24 @@ pub async fn export_leads_csv(
         return Err(AppError::not_found("No leads found"));
     }
 
-    let csv_data = generate_csv(&leads).map_err(|e| {
-        AppError::internal(format!("Failed to generate CSV: {}", e))
-    })?;
-
+    let csv_data = generate_csv(&leads)?;
     let filename = format!("leads_export_{}.csv", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
 
     let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        "text/csv".parse().unwrap(),
-    );
+    headers.insert(header::CONTENT_TYPE, "text/csv".parse().unwrap());
     headers.insert(
         header::CONTENT_DISPOSITION,
         format!("attachment; filename=\"{}\"", filename).parse().unwrap(),
     );
 
-    Ok((headers, csv_data).into_response())
+    Ok((headers, csv_data))
 }
 
-// GET /api/leads/stats - Get lead statistics (simplified)
+// GET /api/leads/stats - Get lead statistics
+#[axum::debug_handler]
 pub async fn get_lead_stats(
     State(state): State<AppState>,
-) -> Result<Json<LeadStatsResponse>> {
-    // This is a simplified version. In production, you might want to optimize this
-    // with a single query that uses COUNT with CASE statements.
-    
+) -> Result<Json<LeadStatsResponse>, AppError> {
     let all_leads = state.lead_repository.get_leads(
         LeadFilters {
             status: None,
@@ -312,7 +328,7 @@ pub async fn get_lead_stats(
         },
         PaginationParams {
             page: Some(1),
-            per_page: Some(10000), // Large number to get all leads
+            per_page: Some(10000),
         },
     ).await?;
 

@@ -99,10 +99,10 @@ impl LeadRepository {
         // Build dynamic query based on filters
         let mut query = String::from(
             "SELECT id, name, email, status, created_at, updated_at, notes, source, phone, company 
-             FROM leads WHERE 1=1"
+            FROM leads WHERE 1=1"
         );
         let mut count_query = String::from("SELECT COUNT(*) FROM leads WHERE 1=1");
-        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
         let mut param_count = 0;
 
         // Add status filter
@@ -158,7 +158,7 @@ impl LeadRepository {
 
         // Execute count query
         let count_params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
-            params[..params.len()-2].iter().map(|p| p.as_ref()).collect();
+            params[..params.len()-2].iter().map(|p| &**p as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
         let total_count: i64 = client
             .query_one(&count_query, &count_params)
             .await?
@@ -166,7 +166,7 @@ impl LeadRepository {
 
         // Execute main query
         let query_params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
-            params.iter().map(|p| p.as_ref()).collect();
+            params.iter().map(|p| &**p as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
         let rows = client.query(&query, &query_params).await?;
         
         let leads: Vec<Lead> = rows.into_iter().map(row_to_lead).collect();
@@ -190,7 +190,7 @@ impl LeadRepository {
         let client = self.pool.get().await?;
         
         let mut query = String::from("UPDATE leads SET ");
-        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+        let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>> = Vec::new();
         let mut param_count = 0;
         let mut updates = Vec::new();
 
@@ -239,8 +239,9 @@ impl LeadRepository {
         query.push_str(&format!(" WHERE id = ${} RETURNING id, name, email, status, created_at, updated_at, notes, source, phone, company", param_count));
         params.push(Box::new(id));
 
+        // Convert parameters to the correct type expected by tokio_postgres
         let query_params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = 
-            params.iter().map(|p| p.as_ref()).collect();
+            params.iter().map(|p| &**p as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
 
         let row = client
             .query_opt(&query, &query_params)

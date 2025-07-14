@@ -1,6 +1,12 @@
-use axum::{extract::State, Json};
+// Fixed handlers/health.rs
+use axum::{
+    extract::State, 
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
 use serde::Serialize;
-use crate::{errors::Result, AppState};
+use crate::{errors::AppError, AppState};
 
 #[derive(Debug, Serialize)]
 pub struct HealthResponse {
@@ -32,17 +38,17 @@ pub struct FeatureHealth {
 }
 
 // GET /health - Basic health check
-pub async fn health_check() -> Json<serde_json::Value> {
-    Json(serde_json::json!({
+pub async fn health_check() -> impl IntoResponse {
+    (StatusCode::OK, Json(serde_json::json!({
         "status": "ok",
         "timestamp": chrono::Utc::now()
-    }))
+    })))
 }
 
 // GET /health/detailed - Detailed health check
 pub async fn detailed_health_check(
     State(state): State<AppState>,
-) -> Result<Json<HealthResponse>> {
+) -> impl IntoResponse {
     // Test database connection
     let database_status = match test_database_connection(&state).await {
         Ok(_) => "healthy",
@@ -70,32 +76,33 @@ pub async fn detailed_health_check(
         },
     };
 
-    Ok(Json(health))
+    (StatusCode::OK, Json(health))
 }
 
 // GET /health/readiness - Kubernetes readiness probe
 pub async fn readiness_check(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>> {
+) -> impl IntoResponse {
     // Test if the application is ready to serve requests
-    test_database_connection(&state).await?;
+    match test_database_connection(&state).await {
+        Ok(_) => (StatusCode::OK, Json(serde_json::json!({
+            "status": "ready",
+            "timestamp": chrono::Utc::now()
+        }))).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
 
-    Ok(Json(serde_json::json!({
-        "status": "ready",
+// GET /health/liveness - Kubernetes liveness probe
+pub async fn liveness_check() -> impl IntoResponse {
+    // Basic liveness check - just return success if the server is running
+    (StatusCode::OK, Json(serde_json::json!({
+        "status": "alive",
         "timestamp": chrono::Utc::now()
     })))
 }
 
-// GET /health/liveness - Kubernetes liveness probe
-pub async fn liveness_check() -> Json<serde_json::Value> {
-    // Basic liveness check - just return success if the server is running
-    Json(serde_json::json!({
-        "status": "alive",
-        "timestamp": chrono::Utc::now()
-    }))
-}
-
-async fn test_database_connection(state: &AppState) -> Result<()> {
+async fn test_database_connection(state: &AppState) -> Result<(), AppError> {
     let client = state.pool.get().await?;
     client.query_one("SELECT 1", &[]).await?;
     Ok(())

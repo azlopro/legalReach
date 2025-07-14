@@ -28,9 +28,12 @@ use crate::{
     database::{repository::LeadRepository, create_pool},
     handlers::{
         auth_middleware,
-        leads::*,
-        email::*,
-        health::*,
+        leads::{
+            get_leads, get_lead, create_lead, update_lead, bulk_update_leads, 
+            import_leads_csv, export_leads_csv, get_lead_stats
+        },
+        email::{send_emails, get_email_logs, test_email_config},
+        health::{health_check, detailed_health_check, readiness_check, liveness_check},
     },
 };
 
@@ -109,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/health/readiness", get(readiness_check))
         .route("/health/liveness", get(liveness_check))
         
-        // API routes (auth required) - simplified routing
+        // API routes (auth required)
         .route("/api/leads", get(get_leads).post(create_lead))
         .route("/api/leads/stats", get(get_lead_stats))
         .route("/api/leads/import", post(import_leads_csv))
