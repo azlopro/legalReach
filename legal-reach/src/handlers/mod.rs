@@ -1,6 +1,7 @@
 pub mod leads;
 pub mod email;
 pub mod health;
+pub mod disputes;
 
 use axum::{
     extract::{Request, State},

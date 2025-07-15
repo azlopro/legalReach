@@ -52,6 +52,9 @@ pub enum AppError {
     
     #[error("Configuration error: {0}")]
     Config(#[from] config::ConfigError),
+    
+    #[error("Multipart form error: {0}")]
+    Multipart(#[from] axum::extract::multipart::MultipartError),
 }
 
 impl IntoResponse for AppError {

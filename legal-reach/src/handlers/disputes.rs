@@ -251,7 +251,7 @@ pub async fn analyze_conflicts(
     let mut conflict_type_counts = std::collections::HashMap::new();
 
     // Create conflicts and mark leads as disputed
-    for mut conflict in conflicts {
+    for conflict in conflicts {
         // Check if the lead is already disputed
         if let Ok(Some(lead)) = state.lead_repository.get_lead_by_id(conflict.lead_id).await {
             if lead.status == LeadStatus::Disputed {
@@ -260,12 +260,13 @@ pub async fn analyze_conflicts(
         }
 
         // Create the conflict record
-        if let Ok(_) = state.lead_repository.create_conflict(conflict.clone()).await {
+        if state.lead_repository.create_conflict(conflict.clone()).await.is_ok() {
             // Update lead status to disputed
-            if let Ok(_) = state
+            if state
                 .lead_repository
                 .update_leads_status(vec![conflict.lead_id], LeadStatus::Disputed)
                 .await
+                .is_ok()
             {
                 leads_marked_disputed += 1;
             }
