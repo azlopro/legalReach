@@ -1,3 +1,36 @@
-/legal-reach/target
+# --- General ---
+# Environment variables and secrets. NEVER commit these.
+.env
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDE configuration
+.vscode/
+.idea/
+
+# --- Backend (Rust) ---
+# Compiled build artifacts and dependencies
+/legal-reach/target/
+
+# Local configuration file. The .example file is the template.
 /legal-reach/config/default.toml
-/postgres_data
+
+# The Cargo.lock file is typically committed for applications to ensure 
+# reproducible builds. You should usually NOT ignore it.
+# /legal-reach/Cargo.lock
+
+# --- Database ---
+# Local PostgreSQL data directory
+/postgres_data/
+
+# --- Frontend ---
+# Dependencies (e.g., from npm, yarn, pnpm)
+/frontend/node_modules/
+
+# Build output
+/frontend/dist/
+/frontend/build/
+/frontend/.next/
+/frontend/.svelte-kit/
