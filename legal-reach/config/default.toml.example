@@ -23,9 +23,9 @@ session_timeout_hours = 24
 [email]
 smtp_host = "smtp.gmail.com"
 smtp_port = 465
-smtp_username = "nibbabobski@gmail.com"
-smtp_password = "brwlqepetkcoxahy"
-from_email = "nibbabobski@gmail.com"
+smtp_username = "your-email@gmail.com"
+smtp_password = "your-16-char-app-pass"
+from_email = "your-email@gmail.com"
 from_name = "Lead Management System"
 mock_mode = false # Set to false for real emails
 

@@ -1,4 +1,4 @@
-// Fixed handlers/email.rs
+// Updated handlers/email.rs with bulk send functionality
 use axum::{
     extract::{State, Path},
     http::StatusCode,
@@ -10,7 +10,7 @@ use validator::Validate;
 use crate::{
     database::models::*,
     errors::AppError,
-    services::email_service::send_email_to_leads,
+    services::email_service::{send_email_to_leads, send_leads_to_zapier},
     AppState,
 };
 
@@ -25,11 +25,28 @@ pub struct SendEmailRequest {
     pub body: String,
 }
 
+#[derive(Debug, Deserialize, Validate)]
+pub struct BulkSendToZapierRequest {
+    pub lead_ids: Vec<i32>,
+    
+    #[validate(range(min = 1, max = 300, message = "Interval must be between 1 and 300 seconds"))]
+    pub interval_seconds: u64,
+}
+
 #[derive(Debug, Serialize)]
 pub struct SendEmailResponse {
     pub emails_sent: usize,
     pub emails_failed: usize,
     pub errors: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BulkSendResponse {
+    pub total_leads: usize,
+    pub emails_sent: usize,
+    pub emails_failed: usize,
+    pub errors: Vec<String>,
+    pub estimated_completion_time: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -125,6 +142,102 @@ pub async fn send_emails(
         emails_sent,
         emails_failed: errors.len(),
         errors,
+    })).into_response()
+}
+
+// POST /api/email/send-to-zapier - Send leads to Zapier webhook one by one with intervals
+pub async fn send_leads_to_zapier_bulk(
+    State(state): State<AppState>,
+    Json(request): Json<BulkSendToZapierRequest>,
+) -> impl IntoResponse {
+    // Validate the request
+    if let Err(e) = request.validate() {
+        return AppError::validation(format!("Validation failed: {}", e)).into_response();
+    }
+
+    if request.lead_ids.is_empty() {
+        return AppError::validation("No lead IDs provided").into_response();
+    }
+
+    if request.lead_ids.len() > 500 {
+        return AppError::validation("Cannot send more than 500 leads at once").into_response();
+    }
+
+    // Check if email sending is enabled
+    if !state.config.features.enable_email_sending {
+        return AppError::forbidden("Email sending is currently disabled").into_response();
+    }
+
+    // Get the leads
+    let leads = match state.lead_repository.get_leads_by_ids(request.lead_ids).await {
+        Ok(leads) => leads,
+        Err(e) => return e.into_response(),
+    };
+    
+    if leads.is_empty() {
+        return AppError::not_found("No leads found with provided IDs").into_response();
+    }
+
+    // Calculate estimated completion time
+    let total_time_seconds = (leads.len() as u64).saturating_sub(1) * request.interval_seconds;
+    let estimated_completion = chrono::Utc::now() + chrono::Duration::seconds(total_time_seconds as i64);
+
+    // Start the bulk send process (this will run in the background)
+    let (emails_sent, emails_failed, errors) = match send_leads_to_zapier(
+        &state.config,
+        &leads,
+        request.interval_seconds,
+    ).await {
+        Ok(result) => result,
+        Err(e) => return e.into_response(),
+    };
+
+    // Update lead statuses to 'contacted' for successfully sent emails
+    let successful_lead_ids: Vec<i32> = leads
+        .iter()
+        .take(emails_sent)
+        .map(|lead| lead.id)
+        .collect();
+
+    if !successful_lead_ids.is_empty() {
+        // Only update leads that are currently 'new' to avoid overwriting other statuses
+        let new_leads: Vec<i32> = leads
+            .iter()
+            .filter(|lead| lead.status == LeadStatus::New)
+            .take(emails_sent)
+            .map(|lead| lead.id)
+            .collect();
+
+        if !new_leads.is_empty() {
+            if let Err(e) = state
+                .lead_repository
+                .update_leads_status(new_leads, LeadStatus::Contacted)
+                .await 
+            {
+                tracing::warn!("Failed to update lead statuses: {}", e);
+            }
+        }
+
+        // Create email logs for successful sends
+        for lead in leads.iter().take(emails_sent) {
+            let email_log = NewEmailLog {
+                lead_id: lead.id,
+                subject: format!("Zapier Send: Lead {}", lead.id),
+                body: format!("Sent lead {} to Zapier webhook", lead.email),
+            };
+
+            if let Err(e) = state.lead_repository.create_email_log(email_log).await {
+                tracing::warn!("Failed to create email log for lead {}: {}", lead.id, e);
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(BulkSendResponse {
+        total_leads: leads.len(),
+        emails_sent,
+        emails_failed,
+        errors,
+        estimated_completion_time: estimated_completion.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
     })).into_response()
 }
 

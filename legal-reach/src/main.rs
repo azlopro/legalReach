@@ -28,7 +28,7 @@ use crate::{
             get_leads, get_lead, create_lead, update_lead, bulk_update_leads, 
             import_leads_csv, export_leads_csv, get_lead_stats
         },
-        email::{send_emails, get_email_logs, test_email_config},
+        email::{send_emails, get_email_logs, test_email_config, send_leads_to_zapier_bulk},
         health::{health_check, detailed_health_check, readiness_check, liveness_check},
     },
 };
@@ -111,6 +111,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Email routes (auth required)
         .route("/api/email/send", post(send_emails))
         .route("/api/email/test", post(test_email_config))
+        .route("/api/email/send-to-zapier", post(send_leads_to_zapier_bulk)) // NEW ROUTE
         .route("/api/email/logs/{lead_id}", get(get_email_logs))
         
         // Middleware stack
@@ -131,6 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("  Health Check: GET /health");
     tracing::info!("  Leads API: GET/POST /api/leads");
     tracing::info!("  Email API: POST /api/email/send");
+    tracing::info!("  Zapier Bulk Send: POST /api/email/send-to-zapier");
     tracing::info!("  CSV Import: POST /api/leads/import");
     tracing::info!("  CSV Export: GET /api/leads/export");
 

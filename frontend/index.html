@@ -154,6 +154,17 @@
             background: #e2e8f0;
         }
 
+        .btn-zapier {
+            background: linear-gradient(135deg, #ff6b6b, #ff8e53);
+            color: white;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+        }
+
+        .btn-zapier:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4);
+        }
+
         .btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
@@ -369,6 +380,21 @@
             margin-bottom: 10px;
         }
 
+        .zapier-info {
+            background: #fff5f5;
+            border: 2px solid #ff6b6b;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #c53030;
+        }
+
+        .zapier-info strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+
         @media (max-width: 768px) {
             .controls {
                 flex-direction: column;
@@ -424,9 +450,16 @@
                 <button class="btn btn-secondary" id="sendEmailBtn" onclick="openEmailModal()" disabled>
                     <span>✉️</span> Send Email to Selected
                 </button>
+
+                <button class="btn btn-zapier" id="sendZapierBtn" onclick="openZapierModal()" disabled>
+                    <span>⚡</span> Send to Zapier
+                </button>
                 
                 <button class="btn btn-secondary" id="exportBtn" onclick="exportLeads()" disabled>
                     <span>📤</span> Export All to CSV
+                </button>
+                <button class="btn btn-secondary" id="markContactedBtn" onclick="markAsContacted()" disabled>
+                    <span>📞</span> Mark as Contacted
                 </button>
             </div>
 
@@ -457,6 +490,7 @@
         </div>
     </div>
 
+    <!-- Email Modal -->
     <div id="emailModal" class="modal">
         <div class="modal-content">
             <h2>Send Email to Selected Leads</h2>
@@ -473,6 +507,35 @@
                 <button class="btn btn-primary" onclick="sendEmails()">
                     <span id="sendBtnText">Send Email</span>
                     <span id="sendBtnLoading" class="loading" style="display: none;"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Zapier Modal -->
+    <div id="zapierModal" class="modal">
+        <div class="modal-content">
+            <h2>Send Leads to Zapier Webhook</h2>
+            <div class="zapier-info">
+                <strong>⚡ Zapier Integration Info:</strong>
+                Each lead will be sent individually to: <strong>odf86lbl@robot.zapier.com</strong><br>
+                Subject: Lead ID | Body: Lead Email
+            </div>
+            <div class="form-group">
+                <label for="intervalSeconds">Interval between emails (seconds)</label>
+                <input type="number" id="intervalSeconds" min="1" max="300" value="10" placeholder="10">
+                <small style="color: #718096; margin-top: 5px; display: block;">
+                    Recommended: 5-30 seconds to avoid rate limiting
+                </small>
+            </div>
+            <div id="estimatedTime" style="margin: 15px 0; padding: 10px; background: #f8fafc; border-radius: 8px; font-size: 14px; color: #4a5568;">
+                <strong>Estimated completion time:</strong> <span id="estimatedTimeText">-</span>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeZapierModal()">Cancel</button>
+                <button class="btn btn-zapier" onclick="sendToZapier()">
+                    <span id="zapierBtnText">⚡ Start Sending</span>
+                    <span id="zapierBtnLoading" class="loading" style="display: none;"></span>
                 </button>
             </div>
         </div>
@@ -505,6 +568,12 @@
                     closeEmailModal();
                 }
             });
+            document.getElementById('zapierModal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeZapierModal();
+                }
+            });
+            document.getElementById('intervalSeconds').addEventListener('input', updateEstimatedTime);
         }
 
         async function apiFetch(endpoint, options = {}) {
@@ -663,12 +732,15 @@
             updateSelectAllCheckbox();
         }
 
-        function toggleSelectAll() {
+        async function toggleSelectAll() {
             const selectAllCheckbox = document.getElementById('selectAll');
             if (selectAllCheckbox.checked) {
-                allLeads.forEach(lead => selectedLeads.add(lead.id));
+                // Fetch ALL leads across all pages
+                const response = await apiFetch(`/api/leads?status=${currentView}&search=${currentSearchTerm}&page=1&per_page=10000`);
+                const data = await response.json();
+                data.data.forEach(lead => selectedLeads.add(lead.id));
             } else {
-                allLeads.forEach(lead => selectedLeads.delete(lead.id));
+                selectedLeads.clear();
             }
             renderLeads();
             updateButtons();
@@ -696,10 +768,18 @@
 
         function updateButtons() {
             const sendEmailBtn = document.getElementById('sendEmailBtn');
+            const sendZapierBtn = document.getElementById('sendZapierBtn');
             const exportBtn = document.getElementById('exportBtn');
+            const markContactedBtn = document.getElementById('markContactedBtn');
+            markContactedBtn.disabled = selectedLeads.size === 0;
+
             
             sendEmailBtn.style.display = currentView === 'new' ? 'inline-flex' : 'none';
             sendEmailBtn.disabled = selectedLeads.size === 0;
+            
+            sendZapierBtn.style.display = currentView === 'new' ? 'inline-flex' : 'none';
+            sendZapierBtn.disabled = selectedLeads.size === 0;
+            
             exportBtn.disabled = allLeads.length === 0;
         }
 
@@ -750,6 +830,40 @@
             document.getElementById('emailBody').value = '';
         }
 
+        function openZapierModal() {
+            document.getElementById('zapierModal').style.display = 'block';
+            updateEstimatedTime();
+            document.getElementById('intervalSeconds').focus();
+        }
+
+        function closeZapierModal() {
+            document.getElementById('zapierModal').style.display = 'none';
+        }
+
+        function updateEstimatedTime() {
+            const interval = parseInt(document.getElementById('intervalSeconds').value) || 10;
+            const selectedCount = selectedLeads.size;
+            
+            if (selectedCount === 0) {
+                document.getElementById('estimatedTimeText').textContent = 'No leads selected';
+                return;
+            }
+
+            const totalSeconds = (selectedCount - 1) * interval;
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            
+            let timeText = '';
+            if (minutes > 0) {
+                timeText = `${minutes}m ${seconds}s`;
+            } else {
+                timeText = `${seconds}s`;
+            }
+            
+            document.getElementById('estimatedTimeText').textContent = 
+                `${timeText} for ${selectedCount} lead${selectedCount > 1 ? 's' : ''}`;
+        }
+
         async function sendEmails() {
             const subject = document.getElementById('emailSubject').value.trim();
             const body = document.getElementById('emailBody').value.trim();
@@ -788,6 +902,71 @@
             }
         }
 
+        async function sendToZapier() {
+            const interval = parseInt(document.getElementById('intervalSeconds').value);
+
+            if (!interval || interval < 1 || interval > 300) {
+                showNotification('Please enter a valid interval between 1 and 300 seconds.', 'error');
+                return;
+            }
+
+            if (selectedLeads.size === 0) {
+                showNotification('Please select at least one lead.', 'error');
+                return;
+            }
+
+            const sendBtn = document.querySelector('#zapierModal .btn-zapier');
+            document.getElementById('zapierBtnText').style.display = 'none';
+            document.getElementById('zapierBtnLoading').style.display = 'inline-block';
+            sendBtn.disabled = true;
+
+            try {
+                const response = await apiFetch('/api/email/send-to-zapier', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        lead_ids: Array.from(selectedLeads),
+                        interval_seconds: interval,
+                    }),
+                });
+                const result = await response.json();
+                showNotification(
+                    `Zapier send completed: ${result.emails_sent} sent, ${result.emails_failed} failed. Estimated completion: ${result.estimated_completion_time}`, 
+                    'success'
+                );
+                selectedLeads.clear();
+                closeZapierModal();
+                fetchLeads();
+                fetchStats();
+            } catch (error) {
+                console.error('Failed to send to Zapier:', error);
+            } finally {
+                document.getElementById('zapierBtnText').style.display = 'inline';
+                document.getElementById('zapierBtnLoading').style.display = 'none';
+                sendBtn.disabled = false;
+            }
+        }
+
+        async function markAsContacted() {
+            if (selectedLeads.size === 0) return;
+
+            try {
+                await apiFetch('/api/leads/bulk-update', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        lead_ids: Array.from(selectedLeads),
+                        status: 'contacted'
+                    }),
+                });
+                showNotification(`${selectedLeads.size} leads marked as contacted`, 'success');
+                selectedLeads.clear();
+                fetchLeads();
+                fetchStats();
+            } catch (error) {
+                console.error('Failed to mark as contacted:', error);
+            }
+        }
+        
+
         async function exportLeads() {
             try {
                 const response = await apiFetch('/api/leads/export', { method: 'GET' });
@@ -821,7 +1000,7 @@
             setTimeout(() => {
                 notification.classList.remove('show');
                 setTimeout(() => notification.remove(), 300);
-            }, 4000);
+            }, 6000); // Show longer for Zapier notifications
         }
         
         function debounce(func, delay) {

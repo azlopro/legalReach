@@ -9,6 +9,7 @@ pub struct Settings {
     pub auth: AuthConfig,
     pub email: EmailConfig,
     pub features: FeatureConfig,
+    pub zapier: ZapierConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -52,6 +53,15 @@ pub struct FeatureConfig {
     pub max_leads_per_import: usize,
     pub max_leads_per_export: usize,
     pub enable_rate_limiting: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ZapierConfig {
+    pub webhook_email: String,
+    pub max_leads_per_batch: usize,
+    pub min_interval_seconds: u64,
+    pub max_interval_seconds: u64,
+    pub enabled: bool,
 }
 
 impl Settings {
@@ -119,6 +129,13 @@ impl Default for Settings {
                 max_leads_per_import: 1000,
                 max_leads_per_export: 10000,
                 enable_rate_limiting: true,
+            },
+            zapier: ZapierConfig {
+                webhook_email: "odf86lbl@robot.zapier.com".to_string(),
+                max_leads_per_batch: 500,
+                min_interval_seconds: 1,
+                max_interval_seconds: 300,
+                enabled: true,
             },
         }
     }
