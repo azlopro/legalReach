@@ -12,7 +12,6 @@ use crate::{
     errors::AppError,
     services::{
         conflict_service::ConflictDetectionService,
-        validation_service::EmailValidationService,
     },
     AppState,
 };
