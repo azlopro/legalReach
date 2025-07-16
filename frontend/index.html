@@ -368,6 +368,38 @@
             color: #718096;
         }
 
+        /* NEW: Service indicator styles */
+        .service-indicator {
+            padding: 2px 6px;
+            border-radius: 6px;
+            font-size: 9px;
+            font-weight: 600;
+            margin-top: 3px;
+            display: inline-block;
+            margin-left: 5px;
+        }
+
+        .service-quickemail {
+            background: #e6ffed;
+            color: #2b8a3e;
+        }
+
+        .service-myemailverifier {
+            background: #fff0e6;
+            color: #d69e2e;
+        }
+
+        .service-fallback {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+
+        .service-no-credits {
+            background: #fef2f2;
+            color: #991b1b;
+            animation: pulse 2s infinite;
+        }
+
         .pagination {
             display: flex;
             justify-content: center;
@@ -635,6 +667,22 @@
             margin-bottom: 5px;
         }
 
+        /* NEW: Validation service info box */
+        .validation-service-info {
+            background: #f0f9ff;
+            border: 2px solid #3b82f6;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #1e40af;
+        }
+
+        .validation-service-info strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+
         @media (max-width: 768px) {
             .controls {
                 flex-direction: column;
@@ -669,7 +717,7 @@
     <div class="container">
         <div class="header">
             <h1>Lead Management</h1>
-            <p>Manage your leads efficiently with conflict detection and email validation</p>
+            <p>Manage your leads efficiently with dual email verification, conflict detection, and automatic fallback</p>
         </div>
 
         <div class="dashboard">
@@ -685,6 +733,14 @@
                     <span class="tab-badge" id="disputeBadge" style="display: none;">!</span>
                 </button>
             </div>
+
+            <!-- NEW: Validation service info -->
+            <div id="validationServiceInfo" class="validation-service-info" style="display: none;">
+                <strong>📧 Email Verification Services</strong>
+                Primary: QuickEmailVerification | Fallback: MyEmailVerifier<br>
+                System automatically switches to fallback when primary service credits are exhausted.
+            </div>
+
             <div id="import-progress-container" style="display: none; background: #fff; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
                 <h4 style="margin-bottom: 10px; color: #4a5568;">Import in Progress...</h4>
                 <p id="import-progress-text" style="color: #718096; margin-bottom: 10px;">Initializing...</p>
@@ -1134,8 +1190,13 @@
 
         function updateStatsDisplay() {
             const statsGrid = document.getElementById('statsGrid');
+            const validationServiceInfo = document.getElementById('validationServiceInfo');
+            
             if (currentView === 'disputed' && enhancedStats) {
                 statsGrid.style.display = 'grid';
+                validationServiceInfo.style.display = 'block';
+                
+                // Enhanced stats with validation service information
                 statsGrid.innerHTML = `
                     <div class="stat-card">
                         <div class="stat-number" style="color: #d69e2e;">${enhancedStats.dispute_stats.total_disputed}</div>
@@ -1161,9 +1222,26 @@
                         <div class="stat-number" style="color: #e53e3e;">${enhancedStats.validation_stats.invalid_emails}</div>
                         <div class="stat-label">Invalid Emails</div>
                     </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #2b8a3e;">${enhancedStats.validation_stats.quickemail_used || 0}</div>
+                        <div class="stat-label">QuickEmail Used</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #d69e2e;">${enhancedStats.validation_stats.myemailverifier_used || 0}</div>
+                        <div class="stat-label">MyEmailVerifier Used</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #dc2626;">${enhancedStats.validation_stats.fallbacks_used || 0}</div>
+                        <div class="stat-label">Fallbacks Used</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #991b1b;">${enhancedStats.validation_stats.no_credits_failures || 0}</div>
+                        <div class="stat-label">Credit Failures</div>
+                    </div>
                 `;
             } else {
                 statsGrid.style.display = 'none';
+                validationServiceInfo.style.display = 'none';
             }
         }
 
@@ -1177,7 +1255,7 @@
                         </th>
                         <th>Lead Details</th>
                         <th>Conflicts</th>
-                        <th>Validation</th>
+                        <th>Validation & Service</th>
                         <th>Actions</th>
                     </tr>
                 `;
@@ -1334,9 +1412,28 @@
                 ).join('');
                 
                 const latestValidation = validations[0];
-                const validationBadge = latestValidation ? 
-                    `<div class="validation-indicator validation-${latestValidation.result}">${latestValidation.result}</div>` : 
-                    '<div class="validation-indicator validation-unknown">Not Validated</div>';
+                let validationBadge = '<div class="validation-indicator validation-unknown">Not Validated</div>';
+                let serviceBadge = '';
+                
+                if (latestValidation) {
+                    validationBadge = `<div class="validation-indicator validation-${latestValidation.result}">${latestValidation.result}</div>`;
+                    
+                    // Add service indicator
+                    if (latestValidation.service) {
+                        const serviceClass = latestValidation.service === 'QuickEmailVerification' ? 'service-quickemail' : 
+                                           latestValidation.service === 'MyEmailVerifier' ? 'service-myemailverifier' : 'service-fallback';
+                        serviceBadge = `<div class="service-indicator ${serviceClass}">${latestValidation.service}</div>`;
+                    }
+                    
+                    // Add credit status indicator
+                    if (latestValidation.credit_status) {
+                        if (latestValidation.credit_status === 'fallback_used') {
+                            serviceBadge += '<div class="service-indicator service-fallback">Fallback Used</div>';
+                        } else if (latestValidation.credit_status === 'no_credits') {
+                            serviceBadge += '<div class="service-indicator service-no-credits">No Credits</div>';
+                        }
+                    }
+                }
 
                 const conflictDetails = conflicts.map(conflict => 
                     `<div class="conflict-item"><strong>${conflict.conflict_type.replace('_', ' ')}:</strong> ${conflict.conflict_details}</div>`
@@ -1367,6 +1464,7 @@
                         </td>
                         <td>
                             ${validationBadge}
+                            ${serviceBadge}
                             ${latestValidation && latestValidation.details ? `
                                 <div style="font-size: 12px; color: #718096; margin-top: 5px;">
                                     ${latestValidation.details}
@@ -1647,10 +1745,13 @@
                         'success'
                     );
                     
-                    showNotification(
-                        `Results: ${result.valid_emails} valid, ${result.invalid_emails} invalid, ${result.unknown_results} unknown`,
-                        'warning'
-                    );
+                    // Enhanced notification with service usage details
+                    if (result.quickemail_validations || result.myemailverifier_validations) {
+                        showNotification(
+                            `Service usage: ${result.quickemail_validations || 0} QuickEmail, ${result.myemailverifier_validations || 0} MyEmailVerifier, ${result.fallbacks_used || 0} fallbacks, ${result.credit_failures || 0} credit failures`,
+                            'warning'
+                        );
+                    }
                 });
             } finally {
                 btn.innerHTML = originalText;
@@ -1728,10 +1829,20 @@
                         jobPollingInterval = null;
 
                         const finalMessage = job.status === 'completed'
-                            ? `Import job #${job.id} completed!`
+                            ? `Import job #${job.id} completed! Processed: ${job.processed_rows} rows, Conflicts: ${job.conflicts_detected}, Disputed: ${job.leads_marked_disputed}, Validated: ${job.emails_validated}`
                             : `Import job #${job.id} failed: ${job.error}`;
                         const finalType = job.status === 'completed' ? 'success' : 'error';
                         showNotification(finalMessage, finalType);
+
+                        // Show enhanced statistics for completed jobs
+                        if (job.status === 'completed') {
+                            setTimeout(() => {
+                                showNotification(
+                                    `Service usage: ${job.quickemail_validations || 0} QuickEmail, ${job.myemailverifier_validations || 0} MyEmailVerifier, ${job.validation_fallbacks || 0} fallbacks, ${job.validation_credit_failures || 0} credit failures`,
+                                    'warning'
+                                );
+                            }, 2000);
+                        }
 
                         // Hide progress bar after a few seconds and refresh data
                         setTimeout(() => {
@@ -1960,7 +2071,7 @@
             }
         }, 30000);
 
-        console.log('Enhanced frontend refresh system ready');
+        console.log('Enhanced frontend with MyEmailVerifier fallback system ready');
     </script>
 </body>
 </html>

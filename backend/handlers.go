@@ -140,6 +140,12 @@ func getEnhancedStats(c *gin.Context) {
 	db.Model(&Validation{}).Where("result = ?", "invalid").Count(&stats.ValidationStats.InvalidEmails)
 	db.Model(&Validation{}).Where("result = ?", "unknown").Count(&stats.ValidationStats.UnknownEmails)
 
+	// Enhanced validation service statistics
+	db.Model(&Validation{}).Where("service = ?", "QuickEmailVerification").Count(&stats.ValidationStats.QuickEmailUsed)
+	db.Model(&Validation{}).Where("service = ?", "MyEmailVerifier").Count(&stats.ValidationStats.MyEmailVerifierUsed)
+	db.Model(&Validation{}).Where("credit_status = ?", "fallback_used").Count(&stats.ValidationStats.FallbacksUsed)
+	db.Model(&Validation{}).Where("credit_status = ?", "no_credits").Count(&stats.ValidationStats.NoCreditsFailures)
+
 	c.JSON(http.StatusOK, stats)
 }
 
@@ -280,8 +286,9 @@ func processImportJob(jobID uint) {
 		log.Printf("Failed to finalize job: %v", err)
 	}
 
-	log.Printf("Import job %d completed: %d rows processed, %d conflicts detected, %d disputed, %d validated",
-		job.ID, job.ProcessedRows, job.ConflictsDetected, job.LeadsMarkedDisputed, job.EmailsValidated)
+	log.Printf("Import job %d completed: %d rows processed, %d conflicts detected, %d disputed, %d validated, %d QEV, %d MEV, %d fallbacks, %d credit failures",
+		job.ID, job.ProcessedRows, job.ConflictsDetected, job.LeadsMarkedDisputed, job.EmailsValidated,
+		job.QuickEmailValidations, job.MyEmailVerifierValidations, job.ValidationFallbacks, job.ValidationCreditFailures)
 }
 
 func getImportJobStatus(c *gin.Context) {
@@ -528,6 +535,7 @@ func validateDisputedEmails(c *gin.Context) {
 	db.Where("id IN ?", disputedLeadIDs).Find(&leads)
 
 	var validationsPerformed int
+	var quickEmailUsed, myEmailVerifierUsed, fallbacksUsed, creditFailures int
 
 	for _, lead := range leads {
 		// Check if validation already exists
@@ -537,21 +545,44 @@ func validateDisputedEmails(c *gin.Context) {
 			continue
 		}
 
-		result, details := validateEmail(lead.Email)
+		result, details, service, creditStatus := validateEmailWithTracking(lead.Email)
 		validation := Validation{
-			LeadID:    lead.ID,
-			Result:    result,
-			Details:   details,
-			CreatedAt: time.Now(),
+			LeadID:       lead.ID,
+			Result:       result,
+			Details:      details,
+			Service:      service,
+			CreditStatus: creditStatus,
+			CreatedAt:    time.Now(),
 		}
 		if err := db.Create(&validation).Error; err != nil {
 			log.Printf("Failed to save validation for lead %d: %v", lead.ID, err)
 		} else {
 			validationsPerformed++
+
+			// Track service usage
+			switch service {
+			case "QuickEmailVerification":
+				quickEmailUsed++
+			case "MyEmailVerifier":
+				myEmailVerifierUsed++
+			}
+
+			switch creditStatus {
+			case "fallback_used":
+				fallbacksUsed++
+			case "no_credits":
+				creditFailures++
+			}
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"validations_performed": validationsPerformed})
+	c.JSON(http.StatusOK, gin.H{
+		"validations_performed":       validationsPerformed,
+		"quickemail_validations":      quickEmailUsed,
+		"myemailverifier_validations": myEmailVerifierUsed,
+		"fallbacks_used":              fallbacksUsed,
+		"credit_failures":             creditFailures,
+	})
 }
 
 func sendEmails(c *gin.Context) {

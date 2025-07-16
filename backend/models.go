@@ -23,12 +23,14 @@ type Conflict struct {
 }
 
 type Validation struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	LeadID    uint      `json:"lead_id"`
-	Result    string    `json:"result"` // valid, invalid, unknown
-	Details   string    `json:"details"`
-	CreatedAt time.Time `json:"created_at"`
-	Lead      Lead      `json:"lead" gorm:"foreignKey:LeadID"`
+	ID           uint      `json:"id" gorm:"primaryKey"`
+	LeadID       uint      `json:"lead_id"`
+	Result       string    `json:"result"` // valid, invalid, unknown
+	Details      string    `json:"details"`
+	Service      string    `json:"service"`       // NEW: Track which service was used (QuickEmail, MyEmailVerifier, etc.)
+	CreditStatus string    `json:"credit_status"` // NEW: Track credit status (success, fallback_used, no_credits)
+	CreatedAt    time.Time `json:"created_at"`
+	Lead         Lead      `json:"lead" gorm:"foreignKey:LeadID"`
 }
 
 type Dispute struct {
@@ -77,13 +79,17 @@ type EnhancedStats struct {
 		SimilarNameConflicts    int64 `json:"similar_name_conflicts"`
 	} `json:"dispute_stats"`
 	ValidationStats struct {
-		ValidEmails   int64 `json:"valid_emails"`
-		InvalidEmails int64 `json:"invalid_emails"`
-		UnknownEmails int64 `json:"unknown_emails"`
+		ValidEmails         int64 `json:"valid_emails"`
+		InvalidEmails       int64 `json:"invalid_emails"`
+		UnknownEmails       int64 `json:"unknown_emails"`
+		QuickEmailUsed      int64 `json:"quickemail_used"`      // NEW: Count of QuickEmail validations
+		MyEmailVerifierUsed int64 `json:"myemailverifier_used"` // NEW: Count of MyEmailVerifier validations
+		FallbacksUsed       int64 `json:"fallbacks_used"`       // NEW: Count of fallback validations
+		NoCreditsFailures   int64 `json:"no_credits_failures"`  // NEW: Count of validation failures due to no credits
 	} `json:"validation_stats"`
 }
 
-// FIXED: Import Job with Settings
+// Import Job with Settings and Validation Service Tracking
 type ImportJob struct {
 	ID               uint       `json:"id" gorm:"primaryKey"`
 	OriginalFilename string     `json:"original_filename"`
@@ -95,13 +101,19 @@ type ImportJob struct {
 	CreatedAt        time.Time  `json:"created_at"`
 	CompletedAt      *time.Time `json:"completed_at,omitempty"`
 
-	// NEW: Import Settings
+	// Import Settings
 	EnableValidation        bool `json:"enable_validation" gorm:"default:true"`
 	EnableConflictDetection bool `json:"enable_conflict_detection" gorm:"default:true"`
 	AutoMarkDisputed        bool `json:"auto_mark_disputed" gorm:"default:true"`
 
-	// NEW: Import Results
+	// Import Results
 	ConflictsDetected   int `json:"conflicts_detected" gorm:"default:0"`
 	LeadsMarkedDisputed int `json:"leads_marked_disputed" gorm:"default:0"`
 	EmailsValidated     int `json:"emails_validated" gorm:"default:0"`
+
+	// NEW: Validation Service Tracking
+	QuickEmailValidations      int `json:"quickemail_validations" gorm:"default:0"`
+	MyEmailVerifierValidations int `json:"myemailverifier_validations" gorm:"default:0"`
+	ValidationFallbacks        int `json:"validation_fallbacks" gorm:"default:0"`
+	ValidationCreditFailures   int `json:"validation_credit_failures" gorm:"default:0"`
 }
