@@ -83,6 +83,7 @@ type EnhancedStats struct {
 	} `json:"validation_stats"`
 }
 
+// FIXED: Import Job with Settings
 type ImportJob struct {
 	ID               uint       `json:"id" gorm:"primaryKey"`
 	OriginalFilename string     `json:"original_filename"`
@@ -93,4 +94,14 @@ type ImportJob struct {
 	Error            string     `json:"error,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
 	CompletedAt      *time.Time `json:"completed_at,omitempty"`
+
+	// NEW: Import Settings
+	EnableValidation        bool `json:"enable_validation" gorm:"default:true"`
+	EnableConflictDetection bool `json:"enable_conflict_detection" gorm:"default:true"`
+	AutoMarkDisputed        bool `json:"auto_mark_disputed" gorm:"default:true"`
+
+	// NEW: Import Results
+	ConflictsDetected   int `json:"conflicts_detected" gorm:"default:0"`
+	LeadsMarkedDisputed int `json:"leads_marked_disputed" gorm:"default:0"`
+	EmailsValidated     int `json:"emails_validated" gorm:"default:0"`
 }

@@ -140,6 +140,7 @@ func checkDomainWithAbuseIPDB(email string) (bool, string, error) {
 	return isSuspicious, details, nil
 }
 
+// FIXED: Conflict detection that actually saves conflicts to the database
 func detectConflicts(lead Lead) []Conflict {
 	var conflicts []Conflict
 
@@ -148,11 +149,40 @@ func detectConflicts(lead Lead) []Conflict {
 	var sameDomainLeads []Lead
 	db.Where("email LIKE ? AND id != ?", "%@"+domain, lead.ID).Find(&sameDomainLeads)
 	if len(sameDomainLeads) > 0 {
-		conflicts = append(conflicts, Conflict{
+		conflict := Conflict{
 			LeadID:          lead.ID,
 			ConflictType:    "same_domain",
 			ConflictDetails: fmt.Sprintf("Found %d other leads with same domain: %s", len(sameDomainLeads), domain),
-		})
+			CreatedAt:       time.Now(),
+		}
+
+		// FIXED: Actually save the conflict to the database
+		if err := db.Create(&conflict).Error; err != nil {
+			log.Printf("Failed to save same_domain conflict for lead %d: %v", lead.ID, err)
+		} else {
+			conflicts = append(conflicts, conflict)
+			log.Printf("Saved same_domain conflict for lead %d: %s", lead.ID, conflict.ConflictDetails)
+		}
+	}
+
+	// Check for duplicate emails (should be caught by unique constraint, but let's be thorough)
+	var duplicateEmails []Lead
+	db.Where("email = ? AND id != ?", lead.Email, lead.ID).Find(&duplicateEmails)
+	if len(duplicateEmails) > 0 {
+		conflict := Conflict{
+			LeadID:          lead.ID,
+			ConflictType:    "duplicate_email",
+			ConflictDetails: fmt.Sprintf("Duplicate email found: %d existing leads with %s", len(duplicateEmails), lead.Email),
+			CreatedAt:       time.Now(),
+		}
+
+		// FIXED: Actually save the conflict to the database
+		if err := db.Create(&conflict).Error; err != nil {
+			log.Printf("Failed to save duplicate_email conflict for lead %d: %v", lead.ID, err)
+		} else {
+			conflicts = append(conflicts, conflict)
+			log.Printf("Saved duplicate_email conflict for lead %d: %s", lead.ID, conflict.ConflictDetails)
+		}
 	}
 
 	// Check for similar names
@@ -160,16 +190,83 @@ func detectConflicts(lead Lead) []Conflict {
 	db.Where("id != ?", lead.ID).Find(&allLeads)
 	for _, otherLead := range allLeads {
 		if calculateNameSimilarity(lead.Name, otherLead.Name) > 0.8 { // 80% threshold
-			conflicts = append(conflicts, Conflict{
+			conflict := Conflict{
 				LeadID:          lead.ID,
 				ConflictType:    "similar_name",
-				ConflictDetails: fmt.Sprintf("Similar name to '%s'", otherLead.Name),
-			})
-			break // Only report one similar name
+				ConflictDetails: fmt.Sprintf("Similar name to '%s' (ID: %d)", otherLead.Name, otherLead.ID),
+				CreatedAt:       time.Now(),
+			}
+
+			// FIXED: Actually save the conflict to the database
+			if err := db.Create(&conflict).Error; err != nil {
+				log.Printf("Failed to save similar_name conflict for lead %d: %v", lead.ID, err)
+			} else {
+				conflicts = append(conflicts, conflict)
+				log.Printf("Saved similar_name conflict for lead %d: %s", lead.ID, conflict.ConflictDetails)
+			}
+			break // Only report one similar name to avoid spam
 		}
 	}
 
 	return conflicts
+}
+
+// NEW: Function to process a lead completely with validation and conflict detection
+func processLeadComplete(lead *Lead, job *ImportJob) (bool, error) {
+	var hasConflicts bool
+
+	// 1. Email validation (if enabled)
+	if job.EnableValidation {
+		result, details := validateEmail(lead.Email)
+		validation := Validation{
+			LeadID:    lead.ID,
+			Result:    result,
+			Details:   details,
+			CreatedAt: time.Now(),
+		}
+		if err := db.Create(&validation).Error; err != nil {
+			log.Printf("Failed to save validation for lead %d: %v", lead.ID, err)
+		} else {
+			job.EmailsValidated++
+			log.Printf("Email validation saved for lead %d: %s", lead.ID, result)
+		}
+	}
+
+	// 2. Conflict detection (if enabled)
+	if job.EnableConflictDetection {
+		conflicts := detectConflicts(*lead)
+		if len(conflicts) > 0 {
+			hasConflicts = true
+			job.ConflictsDetected += len(conflicts)
+			log.Printf("Detected %d conflicts for lead %d", len(conflicts), lead.ID)
+		}
+	}
+
+	// 3. Mark as disputed if conflicts found and auto-mark is enabled
+	if hasConflicts && job.AutoMarkDisputed {
+		lead.Status = "disputed"
+		if err := db.Save(lead).Error; err != nil {
+			log.Printf("Failed to update lead %d status to disputed: %v", lead.ID, err)
+			return hasConflicts, err
+		}
+
+		// Create dispute record
+		dispute := Dispute{
+			LeadID:    lead.ID,
+			Status:    "open",
+			Notes:     fmt.Sprintf("Auto-created during import job %d due to %d conflicts", job.ID, job.ConflictsDetected),
+			CreatedAt: time.Now(),
+		}
+		if err := db.Create(&dispute).Error; err != nil {
+			log.Printf("Failed to create dispute for lead %d: %v", lead.ID, err)
+			return hasConflicts, err
+		}
+
+		job.LeadsMarkedDisputed++
+		log.Printf("Lead %d marked as disputed and dispute record created", lead.ID)
+	}
+
+	return hasConflicts, nil
 }
 
 func calculateNameSimilarity(name1, name2 string) float64 {

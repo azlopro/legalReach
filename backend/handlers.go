@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -60,8 +61,10 @@ func getLeads(c *gin.Context) {
 		},
 	})
 }
+
+// FIXED: Import function that captures and uses settings
 func importLeads(c *gin.Context) {
-	// CORRECTED: Capture all 3 return values (file, header, err)
+	// Capture file upload
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "File upload failed"})
@@ -72,7 +75,6 @@ func importLeads(c *gin.Context) {
 	// Save the file to a temporary location
 	tempDir := filepath.Join(os.TempDir(), "lead_imports")
 	os.MkdirAll(tempDir, os.ModePerm)
-	// Create a unique filename to avoid conflicts, using the original extension
 	filename := uuid.New().String() + filepath.Ext(header.Filename)
 	savedPath := filepath.Join(tempDir, filename)
 
@@ -81,25 +83,42 @@ func importLeads(c *gin.Context) {
 		return
 	}
 
-	// Create the job record in the database
+	// FIXED: Parse import settings from form data
+	enableValidation := c.DefaultPostForm("enable_validation", "true") == "true"
+	enableConflictDetection := c.DefaultPostForm("enable_conflict_detection", "true") == "true"
+	autoMarkDisputed := c.DefaultPostForm("auto_mark_disputed", "true") == "true"
+
+	// FIXED: Create job record with settings
 	job := ImportJob{
-		OriginalFilename: header.Filename, // Use the filename from the header
-		FilePath:         savedPath,
-		Status:           "pending",
-		CreatedAt:        time.Now(),
+		OriginalFilename:        header.Filename,
+		FilePath:                savedPath,
+		Status:                  "pending",
+		CreatedAt:               time.Now(),
+		EnableValidation:        enableValidation,
+		EnableConflictDetection: enableConflictDetection,
+		AutoMarkDisputed:        autoMarkDisputed,
+		ConflictsDetected:       0,
+		LeadsMarkedDisputed:     0,
+		EmailsValidated:         0,
 	}
+
 	if err := db.Create(&job).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create import job"})
 		return
 	}
 
-	// Launch the background processor in a new goroutine
+	// Launch the background processor
 	go processImportJob(job.ID)
 
-	// Return 202 Accepted to the user immediately
+	// Return detailed response
 	c.JSON(http.StatusAccepted, gin.H{
 		"message": "File upload accepted. Processing will continue in the background.",
 		"job_id":  job.ID,
+		"settings": map[string]bool{
+			"enable_validation":         enableValidation,
+			"enable_conflict_detection": enableConflictDetection,
+			"auto_mark_disputed":        autoMarkDisputed,
+		},
 	})
 }
 
@@ -123,10 +142,18 @@ func getEnhancedStats(c *gin.Context) {
 
 	c.JSON(http.StatusOK, stats)
 }
+
+// COMPLETELY REWRITTEN: Process import job with proper conflict handling
 func processImportJob(jobID uint) {
 	// Retrieve the job from the DB
 	var job ImportJob
-	db.First(&job, jobID)
+	if err := db.First(&job, jobID).Error; err != nil {
+		log.Printf("Failed to retrieve import job %d: %v", jobID, err)
+		return
+	}
+
+	log.Printf("Starting import job %d with settings: validation=%v, conflicts=%v, auto_disputed=%v",
+		job.ID, job.EnableValidation, job.EnableConflictDetection, job.AutoMarkDisputed)
 
 	// Open the saved file
 	file, err := os.Open(job.FilePath)
@@ -134,6 +161,7 @@ func processImportJob(jobID uint) {
 		job.Status = "failed"
 		job.Error = "Could not open saved file"
 		db.Save(&job)
+		log.Printf("Import job %d failed: %v", job.ID, err)
 		return
 	}
 	defer file.Close()
@@ -147,6 +175,7 @@ func processImportJob(jobID uint) {
 		job.Status = "failed"
 		job.Error = "Invalid or empty CSV file"
 		db.Save(&job)
+		log.Printf("Import job %d failed: invalid CSV", job.ID)
 		return
 	}
 
@@ -155,7 +184,7 @@ func processImportJob(jobID uint) {
 	job.TotalRows = len(records) - 1
 	db.Save(&job)
 
-	// --- This is the core logic from the old importLeads function ---
+	// Parse column headers
 	headers := records[0]
 	columnMap := make(map[string]int)
 	for i, header := range headers {
@@ -169,12 +198,14 @@ func processImportJob(jobID uint) {
 			columnMap["company"] = i
 		}
 	}
+
 	nameCol, nameOK := columnMap["name"]
 	emailCol, emailOK := columnMap["email"]
 	if !nameOK || !emailOK {
 		job.Status = "failed"
 		job.Error = "Could not find required 'Name' and 'Email' columns"
 		db.Save(&job)
+		log.Printf("Import job %d failed: missing required columns", job.ID)
 		return
 	}
 	companyCol, companyOK := columnMap["company"]
@@ -201,20 +232,43 @@ func processImportJob(jobID uint) {
 		// Check for existing lead
 		var existingLead Lead
 		if db.Where("email = ?", email).First(&existingLead).Error == nil {
+			log.Printf("Skipping duplicate email: %s", email)
 			continue // Skip duplicate
 		}
 
-		// Create lead and perform validation/conflict detection
-		lead := Lead{Name: name, Email: email, Company: company, Status: "new"}
-		db.Create(&lead)
+		// FIXED: Create lead with proper initial status
+		lead := Lead{
+			Name:      name,
+			Email:     email,
+			Company:   company,
+			Status:    "new", // Start as new, may be changed to disputed
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
 
-		// NOTE: These are synchronous calls. The job will be slower but more accurate.
-		validateEmail(lead.Email)
-		detectConflicts(lead)
+		if err := db.Create(&lead).Error; err != nil {
+			log.Printf("Failed to create lead %s (%s): %v", name, email, err)
+			continue
+		}
 
-		// Update progress periodically to avoid too many DB writes
-		if job.ProcessedRows%25 == 0 || job.ProcessedRows == job.TotalRows {
-			db.Save(&job)
+		log.Printf("Created lead %d: %s (%s)", lead.ID, lead.Name, lead.Email)
+
+		// FIXED: Process the lead completely with validation and conflict detection
+		hasConflicts, err := processLeadComplete(&lead, &job)
+		if err != nil {
+			log.Printf("Error processing lead %d: %v", lead.ID, err)
+		}
+
+		if hasConflicts {
+			log.Printf("Lead %d has conflicts and was marked as disputed", lead.ID)
+		}
+
+		// Update progress periodically
+		if job.ProcessedRows%10 == 0 || job.ProcessedRows == job.TotalRows {
+			if err := db.Save(&job).Error; err != nil {
+				log.Printf("Failed to update job progress: %v", err)
+			}
+			log.Printf("Import job %d progress: %d/%d rows processed", job.ID, job.ProcessedRows, job.TotalRows)
 		}
 	}
 
@@ -222,7 +276,12 @@ func processImportJob(jobID uint) {
 	now := time.Now()
 	job.Status = "completed"
 	job.CompletedAt = &now
-	db.Save(&job)
+	if err := db.Save(&job).Error; err != nil {
+		log.Printf("Failed to finalize job: %v", err)
+	}
+
+	log.Printf("Import job %d completed: %d rows processed, %d conflicts detected, %d disputed, %d validated",
+		job.ID, job.ProcessedRows, job.ConflictsDetected, job.LeadsMarkedDisputed, job.EmailsValidated)
 }
 
 func getImportJobStatus(c *gin.Context) {
@@ -240,6 +299,7 @@ func listImportJobs(c *gin.Context) {
 	db.Order("created_at DESC").Limit(100).Find(&jobs)
 	c.JSON(http.StatusOK, jobs)
 }
+
 func getDisputes(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "50"))
@@ -411,6 +471,7 @@ func exportLeads(c *gin.Context) {
 	}
 }
 
+// FIXED: Analyze conflicts function that properly marks leads as disputed
 func analyzeConflicts(c *gin.Context) {
 	var leads []Lead
 	db.Find(&leads)
@@ -418,24 +479,37 @@ func analyzeConflicts(c *gin.Context) {
 	var conflictsDetected, leadsMarkedDisputed int
 
 	for _, lead := range leads {
+		// Skip leads that are already disputed
+		if lead.Status == "disputed" {
+			continue
+		}
+
 		conflicts := detectConflicts(lead)
 		if len(conflicts) > 0 {
-			hasNewConflicts := false
-			for _, conflict := range conflicts {
-				var existingConflict int64
-				db.Model(&Conflict{}).Where("lead_id = ? AND conflict_type = ?", lead.ID, conflict.ConflictType).Count(&existingConflict)
-				if existingConflict == 0 {
-					db.Create(&conflict)
-					conflictsDetected++
-					hasNewConflicts = true
-				}
+			conflictsDetected += len(conflicts)
+
+			// Mark lead as disputed
+			lead.Status = "disputed"
+			if err := db.Save(&lead).Error; err != nil {
+				log.Printf("Failed to update lead %d status to disputed: %v", lead.ID, err)
+				continue
 			}
 
-			if hasNewConflicts && lead.Status != "disputed" {
-				lead.Status = "disputed"
-				db.Save(&lead)
-				db.Create(&Dispute{LeadID: lead.ID, Status: "open", Notes: "Marked during conflict analysis"})
-				leadsMarkedDisputed++
+			// Create or update dispute record
+			var existingDispute Dispute
+			if db.Where("lead_id = ? AND status = ?", lead.ID, "open").First(&existingDispute).Error != nil {
+				// No existing open dispute, create new one
+				dispute := Dispute{
+					LeadID:    lead.ID,
+					Status:    "open",
+					Notes:     fmt.Sprintf("Created during manual conflict analysis - %d conflicts found", len(conflicts)),
+					CreatedAt: time.Now(),
+				}
+				if err := db.Create(&dispute).Error; err != nil {
+					log.Printf("Failed to create dispute for lead %d: %v", lead.ID, err)
+				} else {
+					leadsMarkedDisputed++
+				}
 			}
 		}
 	}
@@ -456,13 +530,25 @@ func validateDisputedEmails(c *gin.Context) {
 	var validationsPerformed int
 
 	for _, lead := range leads {
+		// Check if validation already exists
+		var existingValidation Validation
+		if db.Where("lead_id = ?", lead.ID).First(&existingValidation).Error == nil {
+			log.Printf("Validation already exists for lead %d, skipping", lead.ID)
+			continue
+		}
+
 		result, details := validateEmail(lead.Email)
-		db.Create(&Validation{
-			LeadID:  lead.ID,
-			Result:  result,
-			Details: details,
-		})
-		validationsPerformed++
+		validation := Validation{
+			LeadID:    lead.ID,
+			Result:    result,
+			Details:   details,
+			CreatedAt: time.Now(),
+		}
+		if err := db.Create(&validation).Error; err != nil {
+			log.Printf("Failed to save validation for lead %d: %v", lead.ID, err)
+		} else {
+			validationsPerformed++
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"validations_performed": validationsPerformed})
