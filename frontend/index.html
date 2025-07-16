@@ -685,6 +685,13 @@
                     <span class="tab-badge" id="disputeBadge" style="display: none;">!</span>
                 </button>
             </div>
+            <div id="import-progress-container" style="display: none; background: #fff; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
+                <h4 style="margin-bottom: 10px; color: #4a5568;">Import in Progress...</h4>
+                <p id="import-progress-text" style="color: #718096; margin-bottom: 10px;">Initializing...</p>
+                <div style="background: #e2e8f0; border-radius: 5px; overflow: hidden;">
+                    <div id="import-progress-bar" style="width: 0%; background: linear-gradient(135deg, #667eea, #764ba2); height: 12px; transition: width 0.5s ease;"></div>
+                </div>
+            </div>
 
             <div id="statsGrid" class="stats-grid" style="display: none;">
                 <!-- Stats will be populated dynamically -->
@@ -897,7 +904,7 @@
 
     <script>
         const API_BASE_URL = 'http://localhost:3000';
-        const API_KEY = 'your-secure-api-key-here'; // <-- IMPORTANT: Replace with your actual API key
+        const API_KEY = 'a-very-secret-api-key-change-me'; // <-- IMPORTANT: Replace with your actual API key
 
         let allLeads = [];
         let paginationInfo = {};
@@ -909,6 +916,7 @@
         let currentValidationFilter = '';
         let currentDisputeAction = '';
         let enhancedStats = null;
+        let jobPollingInterval = null; // To hold our polling timer
 
         document.addEventListener('DOMContentLoaded', function() {
             setupEventListeners();
@@ -918,14 +926,12 @@
 
         function setupEventListeners() {
             document.getElementById('searchInput').addEventListener('input', debounce(handleSearch, 300));
-            document.getElementById('intervalSeconds').addEventListener('input', updateEstimatedTime);
+            document.getElementById('intervalSeconds')?.addEventListener('input', updateEstimatedTime);
             
-            // Modal event listeners
             ['emailModal', 'zapierModal', 'disputeModal', 'bulkResolveModal', 'importModal'].forEach(modalId => {
-                document.getElementById(modalId).addEventListener('click', function(e) {
-                    if (e.target === this) {
-                        closeModal(modalId);
-                    }
+                const modal = document.getElementById(modalId);
+                modal?.addEventListener('click', (e) => {
+                    if (e.target === modal) closeModal(modalId);
                 });
             });
         }
@@ -1382,15 +1388,8 @@
                 return;
             }
 
-            if (!file.name.toLowerCase().endsWith('.csv')) {
-                showNotification('Please select a CSV file.', 'error');
-                return;
-            }
-
             const importBtn = document.querySelector('#importModal .btn-primary');
-            document.getElementById('importBtnText').style.display = 'none';
-            document.getElementById('importBtnLoading').style.display = 'inline-block';
-            importBtn.disabled = true;
+            setButtonLoading(importBtn, true);
 
             const formData = new FormData();
             formData.append('file', file);
@@ -1402,30 +1401,77 @@
                 const response = await apiFetch('/api/leads/import', { method: 'POST', body: formData });
                 const result = await response.json();
                 
-                let message = `Import complete: ${result.successfully_imported} imported, ${result.skipped_duplicates} skipped`;
-                if (result.marked_disputed > 0) {
-                    message += `, ${result.marked_disputed} marked as disputed`;
-                }
-                if (result.validation_failures > 0) {
-                    message += `, ${result.validation_failures} validation failures`;
-                }
-                
-                showNotification(message, 'success');
-                
-                if (result.conflict_summary && result.conflict_summary.length > 0) {
-                    const conflictDetails = result.conflict_summary.map(c => `${c.count} ${c.conflict_type}`).join(', ');
-                    showNotification(`Conflicts detected: ${conflictDetails}`, 'warning');
-                }
-                
                 closeImportModal();
-                fetchLeads();
-                fetchEnhancedStats();
+                showNotification(`Import job #${result.job_id} started successfully!`, 'success');
+                pollJobStatus(result.job_id); // Start checking for progress
+
             } catch (error) {
-                console.error('Import failed:', error);
+                console.error('Import failed to start:', error);
             } finally {
-                document.getElementById('importBtnText').style.display = 'inline';
-                document.getElementById('importBtnLoading').style.display = 'none';
-                importBtn.disabled = false;
+                setButtonLoading(importBtn, false);
+            }
+        }
+
+        // 2. NEW: This function polls the backend for job status updates.
+        function pollJobStatus(jobId) {
+            const progressContainer = document.getElementById('import-progress-container');
+            const progressText = document.getElementById('import-progress-text');
+            const progressBar = document.getElementById('import-progress-bar');
+            
+            progressContainer.style.display = 'block';
+
+            if (jobPollingInterval) clearInterval(jobPollingInterval);
+
+            jobPollingInterval = setInterval(async () => {
+                try {
+                    const response = await apiFetch(`/api/jobs/import/${jobId}`);
+                    const job = await response.json();
+
+                    // Update UI with progress
+                    const percentage = job.total_rows > 0 ? (job.processed_rows / job.total_rows) * 100 : 0;
+                    progressText.textContent = `Status: ${job.status} (${job.processed_rows} / ${job.total_rows} rows)`;
+                    progressBar.style.width = `${Math.round(percentage)}%`;
+
+                    // Check if the job is finished
+                    if (job.status === 'completed' || job.status === 'failed') {
+                        clearInterval(jobPollingInterval);
+                        jobPollingInterval = null;
+
+                        const finalMessage = job.status === 'completed'
+                            ? `Import job #${job.id} completed!`
+                            : `Import job #${job.id} failed: ${job.error}`;
+                        const finalType = job.status === 'completed' ? 'success' : 'error';
+                        showNotification(finalMessage, finalType);
+
+                        // Hide progress bar after a few seconds and refresh data
+                        setTimeout(() => {
+                            progressContainer.style.display = 'none';
+                        }, 5000);
+                        
+                        fetchLeads();
+                        fetchEnhancedStats();
+                    }
+                } catch (error) {
+                    console.error('Failed to poll job status:', error);
+                    showNotification('Lost connection to import job status.', 'error');
+                    clearInterval(jobPollingInterval);
+                    progressContainer.style.display = 'none';
+                }
+            }, 2000); // Check for updates every 2 seconds
+        }
+        
+        // --- Helper to manage button loading state ---
+        function setButtonLoading(btn, isLoading) {
+            const textSpan = btn.querySelector('span:not(.loading)');
+            const loadingSpan = btn.querySelector('.loading');
+            if (isLoading) {
+                if(textSpan) textSpan.style.display = 'none';
+                if(loadingSpan) loadingSpan.style.display = 'inline-block';
+                btn.disabled = true;
+            } else {
+                if(textSpan) textSpan.style.display = 'inline';
+                if(loadingSpan) loadingSpan.style.display = 'none';
+                btn.disabled = false;
             }
         }
 
