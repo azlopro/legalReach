@@ -221,6 +221,11 @@
             transform: translateY(-2px);
             box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4);
         }
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 12px;
+            border-radius: 8px;
+        }
 
         .btn:disabled {
             opacity: 0.5;
@@ -431,6 +436,24 @@
             background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
             border-color: transparent;
+        }
+        .actions-cell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 150px;
+        }
+        .validation-details {
+            font-size: 12px;
+        }
+        .loading-small {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(0, 0, 0, 0.2);
+            border-radius: 50%;
+            border-top-color: #4a5568;
+            animation: spin 1s ease-in-out infinite;
         }
 
         .modal {
@@ -1283,6 +1306,45 @@
                 `;
             }
         }
+
+        function buildValidationBadge(validation) {
+            if (!validation) return '';
+
+            let validationBadge = `<div class="validation-indicator validation-${validation.result}">${validation.result}</div>`;
+            let serviceBadge = '';
+
+            if (validation.service) {
+                const serviceClass = validation.service === 'QuickEmailVerification' ? 'service-quickemail' :
+                                validation.service === 'MyEmailVerifier' ? 'service-myemailverifier' : 'service-fallback';
+                serviceBadge = `<div class="service-indicator ${serviceClass}" title="${validation.details}">${validation.service.replace('Verification','')}</div>`;
+            }
+            if (validation.credit_status) {
+                if (validation.credit_status === 'fallback_used') {
+                    serviceBadge += '<div class="service-indicator service-fallback">Fallback</div>';
+                } else if (validation.credit_status === 'no_credits') {
+                    serviceBadge += '<div class="service-indicator service-no-credits">No Credits</div>';
+                }
+            }
+            return `<div class="validation-details">${validationBadge}${serviceBadge}</div>`;
+        }
+
+        async function validateSingleEmail(leadId, btn) {
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="loading-small"></span>';
+            btn.disabled = true;
+
+            try {
+                await apiFetch(`/api/leads/${leadId}/validate`, { method: 'POST' });
+                showNotification(`Validation triggered for lead ${leadId}. Refreshing...`, 'success');
+                // A simple refresh is the most reliable way to update the UI
+                await fetchLeads();
+            } catch (error) {
+                showNotification(`Validation failed: ${error.message}`, 'error');
+                // Restore button only on failure
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
         
         // Enhanced switchView function
         function switchView(view) {
@@ -1381,7 +1443,12 @@
                         </span>
                     </td>
                     <td>${lead.company || '-'}</td>
-                    <td>
+                    <td class="actions-cell">
+                        ${
+                            (!lead.validation || lead.validation.result === 'unknown')
+                            ? `<button class="btn btn-secondary btn-sm" onclick="validateSingleEmail(${lead.id}, this)">Check</button>`
+                            : buildValidationBadge(lead.validation)
+                        }
                         <button class="btn btn-danger btn-sm" onclick="deleteLead(${lead.id})">Delete</button>
                     </td>
                 </tr>

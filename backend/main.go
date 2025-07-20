@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -11,6 +12,8 @@ import (
 )
 
 func main() {
+	//Initialize Random seed
+	rand.Seed(time.Now().UnixNano())
 	// Initialize database
 	if err := initDatabase(); err != nil {
 		log.Fatal("Database initialization failed:", err)
@@ -72,6 +75,7 @@ func main() {
 	{
 		// Lead routes
 		api.GET("/leads", getLeads)
+		api.POST("/leads/:id/validate", validateSingleLeadEmail) // ADD THIS LINE
 		api.POST("/leads/import", importLeads)
 		api.GET("/leads/stats", getEnhancedStats)
 		api.POST("/leads/bulk-update", bulkUpdateLeads)

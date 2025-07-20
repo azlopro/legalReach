@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -64,6 +65,48 @@ func deleteLead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Lead and all associated data deleted successfully"})
 }
 
+func validateSingleLeadEmail(c *gin.Context) {
+	leadID := c.Param("id")
+
+	var lead Lead
+	if err := db.First(&lead, leadID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Lead not found"})
+		return
+	}
+
+	// Check for an existing validation record
+	var existingValidation Validation
+	if db.Where("lead_id = ?", lead.ID).First(&existingValidation).Error == nil {
+		// If the existing validation was a success (valid) or a definitive failure (invalid), don't re-validate.
+		if existingValidation.Result == "valid" || existingValidation.Result == "invalid" {
+			c.JSON(http.StatusConflict, gin.H{"error": "This lead has already been conclusively validated.", "validation": existingValidation})
+			return
+		}
+		// If it was an 'unknown' or other error state, we can delete it and proceed with a new validation.
+		if err := db.Delete(&existingValidation).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove previous failed validation record"})
+			return
+		}
+	}
+
+	result, details, service, creditStatus := validateEmailWithTracking(lead.Email)
+	validation := Validation{
+		LeadID:       lead.ID,
+		Result:       result,
+		Details:      details,
+		Service:      service,
+		CreditStatus: creditStatus,
+		CreatedAt:    time.Now(),
+	}
+
+	if err := db.Create(&validation).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save validation result"})
+		return
+	}
+
+	c.JSON(http.StatusOK, validation)
+}
+
 func getLeads(c *gin.Context) {
 	status := c.DefaultQuery("status", "new")
 	search := c.Query("search")
@@ -98,11 +141,48 @@ func getLeads(c *gin.Context) {
 	var leads []Lead
 	query.Offset(offset).Limit(perPage).Order("created_at DESC").Find(&leads)
 
+	// --- NEW: Fetch and attach latest validation for each lead ---
+	var leadIDs []uint
+	for _, l := range leads {
+		leadIDs = append(leadIDs, l.ID)
+	}
+
+	var responseData []gin.H
+	if len(leadIDs) > 0 {
+		var validations []Validation
+		db.Where("lead_id IN ?", leadIDs).Order("created_at DESC").Find(&validations)
+
+		validationMap := make(map[uint]Validation)
+		for _, v := range validations {
+			if _, ok := validationMap[v.LeadID]; !ok {
+				validationMap[v.LeadID] = v
+			}
+		}
+
+		for _, l := range leads {
+			leadMap := gin.H{
+				"id":         l.ID,
+				"name":       l.Name,
+				"email":      l.Email,
+				"status":     l.Status,
+				"company":    l.Company,
+				"created_at": l.CreatedAt,
+				"updated_at": l.UpdatedAt,
+				"validation": nil,
+			}
+			if v, ok := validationMap[l.ID]; ok {
+				leadMap["validation"] = v
+			}
+			responseData = append(responseData, leadMap)
+		}
+	}
+	// --- END NEW ---
+
 	totalPages := int((total + int64(perPage) - 1) / int64(perPage))
 
-	c.JSON(http.StatusOK, LeadsResponse{
-		Data: leads,
-		Pagination: PaginationInfo{
+	c.JSON(http.StatusOK, gin.H{
+		"data": responseData,
+		"pagination": PaginationInfo{
 			CurrentPage:  page,
 			TotalPages:   totalPages,
 			TotalRecords: int(total),
@@ -686,10 +766,31 @@ func sendToZapier(c *gin.Context) {
 			emailsFailed++
 		} else {
 			emailsSent++
+			lead.Status = "contacted"
+			if err := db.Save(&lead).Error; err != nil {
+				log.Printf("Failed to update lead %d status to contacted: %v", lead.ID, err)
+			}
 		}
 
 		if i < len(leads)-1 && requestBody.IntervalSeconds > 0 {
-			time.Sleep(time.Duration(requestBody.IntervalSeconds) * time.Second)
+			// --- NEW: Jitter is now proportional to the interval ---
+			// Calculate jitter as 30% of the interval
+			jitterMagnitude := int(float64(requestBody.IntervalSeconds) * 0.30)
+			if jitterMagnitude == 0 {
+				jitterMagnitude = 1 // Ensure at least 1 second of jitter for very small intervals
+			}
+
+			randomJitter := rand.Intn(jitterMagnitude*2) - jitterMagnitude // Creates a range from -magnitude to +magnitude
+			sleepDuration := time.Duration(requestBody.IntervalSeconds+randomJitter) * time.Second
+
+			// Ensure the sleep duration never falls below a safe minimum of 1 second
+			if sleepDuration < time.Second {
+				sleepDuration = time.Second
+			}
+
+			log.Printf("Base Interval: %ds. Jitter: %ds. Final Wait: %v", requestBody.IntervalSeconds, randomJitter, sleepDuration)
+			time.Sleep(sleepDuration)
+			// --- END NEW ---
 		}
 	}
 
