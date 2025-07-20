@@ -15,6 +15,55 @@ import (
 	"github.com/google/uuid"
 )
 
+func deleteLead(c *gin.Context) {
+	leadID := c.Param("id")
+
+	var lead Lead
+	if err := db.First(&lead, leadID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Lead not found"})
+		return
+	}
+
+	// Use a transaction to ensure all or nothing is deleted
+	tx := db.Begin()
+
+	// Delete associated conflicts
+	if err := tx.Where("lead_id = ?", leadID).Delete(&Conflict{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete associated conflicts"})
+		return
+	}
+
+	// Delete associated validations
+	if err := tx.Where("lead_id = ?", leadID).Delete(&Validation{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete associated validations"})
+		return
+	}
+
+	// Delete associated disputes
+	if err := tx.Where("lead_id = ?", leadID).Delete(&Dispute{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete associated disputes"})
+		return
+	}
+
+	// Delete the lead itself
+	if err := tx.Delete(&lead).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete lead"})
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Transaction commit failed"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Lead and all associated data deleted successfully"})
+}
+
 func getLeads(c *gin.Context) {
 	status := c.DefaultQuery("status", "new")
 	search := c.Query("search")
@@ -134,6 +183,7 @@ func getEnhancedStats(c *gin.Context) {
 	db.Model(&Conflict{}).Where("conflict_type = ?", "same_domain").Count(&stats.DisputeStats.SameDomainConflicts)
 	db.Model(&Conflict{}).Where("conflict_type = ?", "duplicate_email").Count(&stats.DisputeStats.DuplicateEmailConflicts)
 	db.Model(&Conflict{}).Where("conflict_type = ?", "similar_name").Count(&stats.DisputeStats.SimilarNameConflicts)
+	db.Model(&Conflict{}).Where("conflict_type = ?", "contacted_company_domain").Count(&stats.DisputeStats.ContactedDomainConflicts) // ADD THIS LINE
 	stats.DisputeStats.TotalDisputed = stats.DisputedLeads
 
 	db.Model(&Validation{}).Where("result = ?", "valid").Count(&stats.ValidationStats.ValidEmails)

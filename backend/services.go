@@ -294,6 +294,24 @@ func detectConflicts(lead Lead) []Conflict {
 
 	// Check for same domain
 	domain := strings.Split(lead.Email, "@")[1]
+
+	// NEW: Check for contacted leads with the same domain
+	var contactedLeads []Lead
+	db.Where("email LIKE ? AND id != ? AND status = ?", "%@"+domain, lead.ID, "contacted").Find(&contactedLeads)
+	if len(contactedLeads) > 0 {
+		conflict := Conflict{
+			LeadID:          lead.ID,
+			ConflictType:    "contacted_company_domain",
+			ConflictDetails: fmt.Sprintf("Found %d contacted leads from the same domain: %s", len(contactedLeads), domain),
+			CreatedAt:       time.Now(),
+		}
+		if err := db.Create(&conflict).Error; err != nil {
+			log.Printf("Failed to save contacted_company_domain conflict for lead %d: %v", lead.ID, err)
+		} else {
+			conflicts = append(conflicts, conflict)
+			log.Printf("Saved contacted_company_domain conflict for lead %d: %s", lead.ID, conflict.ConflictDetails)
+		}
+	}
 	var sameDomainLeads []Lead
 	db.Where("email LIKE ? AND id != ?", "%@"+domain, lead.ID).Find(&sameDomainLeads)
 	if len(sameDomainLeads) > 0 {

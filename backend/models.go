@@ -73,10 +73,11 @@ type EnhancedStats struct {
 	ContactedLeads int64 `json:"contacted_leads"`
 	DisputedLeads  int   `json:"disputed_leads"`
 	DisputeStats   struct {
-		TotalDisputed           int   `json:"total_disputed"`
-		SameDomainConflicts     int64 `json:"same_domain_conflicts"`
-		DuplicateEmailConflicts int64 `json:"duplicate_email_conflicts"`
-		SimilarNameConflicts    int64 `json:"similar_name_conflicts"`
+		TotalDisputed            int   `json:"total_disputed"`
+		SameDomainConflicts      int64 `json:"same_domain_conflicts"`
+		DuplicateEmailConflicts  int64 `json:"duplicate_email_conflicts"`
+		SimilarNameConflicts     int64 `json:"similar_name_conflicts"`
+		ContactedDomainConflicts int64 `json:"contacted_domain_conflicts"` // ADD THIS LINE
 	} `json:"dispute_stats"`
 	ValidationStats struct {
 		ValidEmails         int64 `json:"valid_emails"`

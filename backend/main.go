@@ -76,6 +76,7 @@ func main() {
 		api.GET("/leads/stats", getEnhancedStats)
 		api.POST("/leads/bulk-update", bulkUpdateLeads)
 		api.GET("/leads/export", exportLeads)
+		api.DELETE("/leads/:id", deleteLead) // ADD THIS LINE
 
 		// Dispute routes
 		api.GET("/disputes", getDisputes)

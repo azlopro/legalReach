@@ -343,6 +343,10 @@
             background: #fdf2f8;
             color: #d53f8c;
         }
+        .conflict-contacted-company-domain { /* ADD THIS ENTIRE BLOCK */
+            background: #eef2ff;
+            color: #4338ca;
+        }
 
         .validation-indicator {
             padding: 2px 6px;
@@ -1135,13 +1139,14 @@
                     endpoint = `/api/disputes?page=${currentPage}&per_page=${leadsPerPage}`;
                     const response = await apiFetch(endpoint);
                     const data = await response.json();
-                    allLeads = data.data.map(item => item.lead);
+                    const leadsData = Array.isArray(data.data) ? data.data : []; // FIX
+                    allLeads = leadsData.map(item => item.lead);
                     paginationInfo = data.pagination;
-                    renderDisputedLeads(data.data);
+                    renderDisputedLeads(leadsData);
                 } else {
                     const response = await apiFetch(endpoint);
                     const data = await response.json();
-                    allLeads = data.data;
+                    allLeads = Array.isArray(data.data) ? data.data : []; // FIX
                     paginationInfo = data.pagination;
                     renderLeads();
                 }
@@ -1207,6 +1212,10 @@
                         <div class="stat-label">Same Domain</div>
                     </div>
                     <div class="stat-card">
+                        <div class="stat-number" style="color: #4338ca;">${enhancedStats.dispute_stats.contacted_domain_conflicts}</div>
+                        <div class="stat-label">Contacted Domain</div>
+                    </div>
+                    <div class="stat-card">
                         <div class="stat-number" style="color: #e53e3e;">${enhancedStats.dispute_stats.duplicate_email_conflicts}</div>
                         <div class="stat-label">Duplicate Email</div>
                     </div>
@@ -1269,6 +1278,7 @@
                         <th>Email</th>
                         <th>Status</th>
                         <th>Company</th>
+                        <th>Actions</th>
                     </tr>
                 `;
             }
@@ -1343,12 +1353,12 @@
                 emptyState.style.display = 'block';
                 table.style.display = 'none';
                 paginationEl.style.display = 'none';
-                
+
                 const emptyTitle = emptyState.querySelector('h3');
                 const emptyText = emptyState.querySelector('p');
                 emptyTitle.textContent = 'No leads found';
                 emptyText.textContent = currentSearchTerm ? `No results for "${currentSearchTerm}"` : `No ${currentView} leads. Try importing some!`;
-                
+
                 return;
             }
 
@@ -1360,8 +1370,8 @@
                 <tr>
                     <td>
                         <input type="checkbox" 
-                               ${selectedLeads.has(lead.id) ? 'checked' : ''}
-                               onchange="toggleLead(${lead.id})">
+                            ${selectedLeads.has(lead.id) ? 'checked' : ''}
+                            onchange="toggleLead(${lead.id})">
                     </td>
                     <td>${lead.name}</td>
                     <td>${lead.email}</td>
@@ -1371,11 +1381,30 @@
                         </span>
                     </td>
                     <td>${lead.company || '-'}</td>
+                    <td>
+                        <button class="btn btn-danger btn-sm" onclick="deleteLead(${lead.id})">Delete</button>
+                    </td>
                 </tr>
             `).join('');
 
             renderPagination();
             updateSelectAllCheckbox();
+        }
+
+        async function deleteLead(leadId) {
+            if (!confirm(`Are you sure you want to delete lead ${leadId}? This action cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                await performOperation('deleteLead', async () => {
+                    await apiFetch(`/api/leads/${leadId}`, { method: 'DELETE' });
+                    showNotification(`Lead ${leadId} has been successfully deleted.`, 'success');
+                });
+            } catch (error) {
+                console.error(`Failed to delete lead ${leadId}:`, error);
+                showNotification(`Error deleting lead: ${error.message}`, 'error');
+            }
         }
 
         function renderDisputedLeads(leadsWithDetails) {
