@@ -16,15 +16,17 @@ var db *gorm.DB
 
 // Email and API Key configuration
 var (
-	SMTPHost           = getEnv("SMTP_HOST", "smtp.gmail.com")
-	SMTPPort           = getEnv("SMTP_PORT", "587")
-	SMTPUsername       = getEnv("SMTP_USERNAME", "your-email@gmail.com")
-	SMTPPassword       = getEnv("SMTP_PASSWORD", "your-app-password")
-	ZapierEmail        = getEnv("ZAPIER_EMAIL", "odf86lbl@robot.zapier.com")
-	APIKey             = getEnv("API_KEY", "your-secure-api-key-here")
-	QuickEmailKey      = getEnv("QUICKEMAILVERIFICATION_API_KEY", "")
-	MyEmailVerifierKey = getEnv("MYEMAILVERIFIER_API_KEY", "") // NEW: MyEmailVerifier API key
-	AbuseIPDBKey       = getEnv("ABUSEIPDB_API_KEY", "")
+	SMTPHost               = getEnv("SMTP_HOST", "smtp.gmail.com")
+	SMTPPort               = getEnv("SMTP_PORT", "587")
+	SMTPUsername           = getEnv("SMTP_USERNAME", "your-email@gmail.com")
+	SMTPPassword           = getEnv("SMTP_PASSWORD", "your-app-password")
+	ZapierEmail            = getEnv("ZAPIER_EMAIL", "odf86lbl@robot.zapier.com")
+	APIKey                 = getEnv("API_KEY", "your-secure-api-key-here")
+	QuickEmailKey          = getEnv("QUICKEMAILVERIFICATION_API_KEY", "")
+	MyEmailVerifierKey     = getEnv("MYEMAILVERIFIER_API_KEY", "") // NEW: MyEmailVerifier API key
+	AbuseIPDBKey           = getEnv("ABUSEIPDB_API_KEY", "")
+	GoogleSheetID          = getEnv("GOOGLE_SHEET_ID", "your-spreadsheet-id-here")
+	GoogleSheetCredentials = getEnv("GOOGLE_SHEET_CREDENTIALS", "your-credentials.json")
 )
 
 // getEnv retrieves an environment variable or returns a default value.

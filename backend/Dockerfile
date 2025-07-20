@@ -28,6 +28,9 @@ WORKDIR /app
 # Copy the built executable from the builder stage
 COPY --from=builder /main .
 
+# --- FIX: Copy the credentials file from the builder stage into the final image ---
+COPY --from=builder /app/credentials/google_sheet_credentials.json .
+
 # Copy the SQLite database file into the container.
 # This is useful if you want to ship the container with existing data.
 # The volume mount in docker-compose.yml will override this during development.

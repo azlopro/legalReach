@@ -3,9 +3,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -15,6 +17,9 @@ import (
 	"time"
 
 	"github.com/texttheater/golang-levenshtein/levenshtein"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/option"
+	"google.golang.org/api/sheets/v4"
 )
 
 // --- Structs for API Responses ---
@@ -471,4 +476,42 @@ func sendSMTPEmail(to, subject, body string) error {
 	auth := smtp.PlainAuth("", SMTPUsername, SMTPPassword, SMTPHost)
 	msg := []byte(fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s\r\n", to, subject, body))
 	return smtp.SendMail(SMTPHost+":"+SMTPPort, auth, SMTPUsername, []string{to}, msg)
+}
+
+// SHeets Service
+// getSheetsService initializes and returns a new Google Sheets service client.
+func getSheetsService() (*sheets.Service, error) {
+	ctx := context.Background()
+	b, err := ioutil.ReadFile(GoogleSheetCredentials)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read client secret file: %v", err)
+	}
+
+	// If you are authorizing a service account, you must grant it the
+	// "https://www.googleapis.com/auth/spreadsheets" scope.
+	config, err := google.JWTConfigFromJSON(b, "https://www.googleapis.com/auth/spreadsheets")
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse client secret file to config: %v", err)
+	}
+	client := config.Client(ctx)
+
+	srv, err := sheets.NewService(ctx, option.WithHTTPClient(client))
+	if err != nil {
+		return nil, fmt.Errorf("unable to retrieve Sheets client: %v", err)
+	}
+
+	return srv, nil
+}
+
+// appendToSheet appends a row of data to the specified sheet.
+func appendToSheet(srv *sheets.Service, sheetID string, sheetName string, values []interface{}) error {
+	rangeStr := fmt.Sprintf("%s!A:B", sheetName)
+	var vr sheets.ValueRange
+	vr.Values = append(vr.Values, values)
+
+	_, err := srv.Spreadsheets.Values.Append(sheetID, rangeStr, &vr).ValueInputOption("RAW").Do()
+	if err != nil {
+		return fmt.Errorf("unable to append data to sheet: %v", err)
+	}
+	return nil
 }

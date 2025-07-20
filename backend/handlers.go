@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"google.golang.org/api/sheets/v4"
 )
 
 func deleteLead(c *gin.Context) {
@@ -744,6 +745,52 @@ func sendEmails(c *gin.Context) {
 	})
 }
 
+func findRowByLeadID(srv *sheets.Service, sheetID, sheetName string, leadID uint) (int, error) {
+	// Range for the entire column A
+	readRange := fmt.Sprintf("%s!A:A", sheetName)
+	resp, err := srv.Spreadsheets.Values.Get(sheetID, readRange).Do()
+	if err != nil {
+		return -1, fmt.Errorf("unable to retrieve data from sheet: %v", err)
+	}
+
+	if len(resp.Values) == 0 {
+		return -1, fmt.Errorf("sheet is empty")
+	}
+
+	leadIDStr := strconv.FormatUint(uint64(leadID), 10)
+
+	// Iterate through the rows of column A to find the lead ID
+	for i, row := range resp.Values {
+		if len(row) > 0 && row[0] == leadIDStr {
+			// Return the 1-based row index
+			return i + 1, nil
+		}
+	}
+
+	return -1, fmt.Errorf("lead ID %d not found in sheet", leadID)
+}
+
+func getLeadStatusFromSheet(srv *sheets.Service, sheetID, sheetName string, leadID uint) (string, error) {
+	rowNum, err := findRowByLeadID(srv, sheetID, sheetName, leadID)
+	if err != nil {
+		return "", err // Propagate the error (e.g., lead not found yet)
+	}
+
+	// Now get the value from column B of that row
+	readRange := fmt.Sprintf("%s!B%d", sheetName, rowNum)
+	resp, err := srv.Spreadsheets.Values.Get(sheetID, readRange).Do()
+	if err != nil {
+		return "", fmt.Errorf("unable to retrieve status for lead %d (row %d): %v", leadID, rowNum, err)
+	}
+
+	// If the cell is empty, it means Zapier hasn't updated it yet.
+	if len(resp.Values) == 0 || len(resp.Values[0]) == 0 {
+		return "0", nil // Return "0" (Not Contacted) as the default status
+	}
+
+	return fmt.Sprintf("%v", resp.Values[0][0]), nil
+}
+
 func sendToZapier(c *gin.Context) {
 	var requestBody struct {
 		LeadIDs         []uint `json:"lead_ids"`
@@ -751,6 +798,17 @@ func sendToZapier(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&requestBody); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	if GoogleSheetCredentials == "your-credentials.json" || GoogleSheetID == "your-spreadsheet-id-here" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": "Google Sheets API is not configured on the server."}})
+		return
+	}
+
+	sheetsService, err := getSheetsService()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": fmt.Sprintf("Failed to initialize Google Sheets service: %v", err)}})
 		return
 	}
 
@@ -764,37 +822,96 @@ func sendToZapier(c *gin.Context) {
 
 		if err := sendSMTPEmail(ZapierEmail, subject, body); err != nil {
 			emailsFailed++
+			log.Printf("Failed to send email to Zapier for lead %d: %v", lead.ID, err)
 		} else {
 			emailsSent++
-			lead.Status = "contacted"
-			if err := db.Save(&lead).Error; err != nil {
-				log.Printf("Failed to update lead %d status to contacted: %v", lead.ID, err)
-			}
+			log.Printf("Successfully sent email to Zapier for lead %d", lead.ID)
+
+			// This goroutine handles writing to the sheet and then waiting for Zapier's update.
+			go func(currentLead Lead) {
+				// Immediately record that the lead was sent (status 0).
+				values := []interface{}{currentLead.ID, 0} // 0 = Not Contacted / Pending
+				if err := appendToSheet(sheetsService, GoogleSheetID, "Sheet1", values); err != nil {
+					log.Printf("Failed to append to sheet for lead %d: %v", currentLead.ID, err)
+					return // Don't proceed with polling if the initial write fails.
+				}
+
+				// --- NEW ROBUST POLLING LOGIC ---
+				// This goroutine will poll the Google Sheet for a status update from Zapier.
+				go func() {
+					const maxRetries = 12 // Total attempts
+					const initialDelay = 5 * time.Second
+					const maxDelay = 60 * time.Second
+
+					delay := initialDelay
+
+					for attempt := 0; attempt < maxRetries; attempt++ {
+						// Wait before checking.
+						time.Sleep(delay)
+
+						// --- FIX: Use the robust function that finds the row by Lead ID ---
+						// This replaces the unreliable method of guessing the row with 'i'.
+						status, err := getLeadStatusFromSheet(sheetsService, GoogleSheetID, "Sheet1", currentLead.ID)
+						if err != nil {
+							// This can happen if Zapier hasn't created the row yet. It's not a fatal error.
+							log.Printf("Polling attempt %d for lead %d: Waiting for Zapier to update the sheet... (%v)", attempt+1, currentLead.ID, err)
+							// Double the delay for the next attempt (exponential backoff).
+							delay *= 2
+							if delay > maxDelay {
+								delay = maxDelay
+							}
+							continue
+						}
+
+						// --- Status Handling ---
+						if status == "1" { // Success!
+							log.Printf("SUCCESS: Zapier confirmed processing for lead %d. Updating status to 'contacted'.", currentLead.ID)
+							currentLead.Status = "contacted"
+							if err := db.Save(&currentLead).Error; err != nil {
+								log.Printf("ERROR: Failed to update lead %d status in database: %v", currentLead.ID, err)
+							}
+							return // Exit the polling loop on success.
+
+						} else if status == "3" { // Error reported by Zapier.
+							log.Printf("ERROR: Zapier reported an error for lead %d. Check Zapier logs for details.", currentLead.ID)
+							// You could potentially set a different status here, like "zapier_error".
+							return // Exit the polling loop on error.
+
+						}
+						// If status is "0" or anything else, just continue polling.
+						log.Printf("Polling attempt %d for lead %d: Status is '%s', waiting for '1' or '3'.", attempt+1, currentLead.ID, status)
+
+						// Increase delay for next attempt.
+						delay *= 2
+						if delay > maxDelay {
+							delay = maxDelay
+						}
+					}
+
+					// If the loop finishes without returning, it timed out.
+					log.Printf("TIMEOUT: Polling for lead %d stopped after %d attempts. No final status received from Zapier.", currentLead.ID, maxRetries)
+				}()
+			}(lead)
 		}
 
 		if i < len(leads)-1 && requestBody.IntervalSeconds > 0 {
-			// --- NEW: Jitter is now proportional to the interval ---
-			// Calculate jitter as 30% of the interval
+			// (Jitter logic remains the same)
 			jitterMagnitude := int(float64(requestBody.IntervalSeconds) * 0.30)
 			if jitterMagnitude == 0 {
-				jitterMagnitude = 1 // Ensure at least 1 second of jitter for very small intervals
+				jitterMagnitude = 1
 			}
-
-			randomJitter := rand.Intn(jitterMagnitude*2) - jitterMagnitude // Creates a range from -magnitude to +magnitude
+			randomJitter := rand.Intn(jitterMagnitude*2) - jitterMagnitude
 			sleepDuration := time.Duration(requestBody.IntervalSeconds+randomJitter) * time.Second
-
-			// Ensure the sleep duration never falls below a safe minimum of 1 second
 			if sleepDuration < time.Second {
 				sleepDuration = time.Second
 			}
-
-			log.Printf("Base Interval: %ds. Jitter: %ds. Final Wait: %v", requestBody.IntervalSeconds, randomJitter, sleepDuration)
+			log.Printf("Waiting for next send: Base Interval: %ds, Jitter: %ds, Final Wait: %v", requestBody.IntervalSeconds, randomJitter, sleepDuration)
 			time.Sleep(sleepDuration)
-			// --- END NEW ---
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
+		"message":       "Zapier process initiated. The application will wait for status updates from Google Sheets.",
 		"emails_sent":   emailsSent,
 		"emails_failed": emailsFailed,
 	})

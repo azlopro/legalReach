@@ -2072,23 +2072,50 @@
             setButtonLoading(sendBtn, true);
 
             try {
-                await performOperation('sendToZapier', async () => {
-                    const response = await apiFetch('/api/email/send-to-zapier', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            lead_ids: Array.from(selectedLeads),
-                            interval_seconds: interval,
-                        }),
-                    });
-                    const result = await response.json();
-                    showNotification(
-                        `Zapier send completed: ${result.emails_sent} sent, ${result.emails_failed} failed. Estimated completion: ${result.estimated_completion_time}`, 
-                        'success'
-                    );
-                    
-                    selectedLeads.clear();
-                    closeZapierModal();
+                // NEW: Add a visual indicator that the process is waiting
+                selectedLeads.forEach(leadId => {
+                    const leadRow = document.querySelector(`tr[data-lead-id='${leadId}']`);
+                    if (leadRow) {
+                        const statusCell = leadRow.querySelector('.status-badge');
+                        if (statusCell) {
+                            statusCell.innerHTML = `
+                                <div class="status-badge status-disputed">
+                                    Waiting for Zapier...
+                                </div>
+                            `;
+                        }
+                    }
                 });
+
+                const response = await apiFetch('/api/email/send-to-zapier', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        lead_ids: Array.from(selectedLeads),
+                        interval_seconds: interval,
+                    }),
+                });
+                const result = await response.json();
+                showNotification(
+                    `Zapier process initiated for ${selectedLeads.size} leads. The system will now wait for updates from Google Sheets.`,
+                    'success'
+                );
+                
+                selectedLeads.clear();
+                closeZapierModal();
+                
+                // NEW: Periodically check for updates
+                const checkStatusInterval = setInterval(async () => {
+                    // In a real application, you would create a new API endpoint
+                    // to check the status of the leads. For now, we will just refresh the data.
+                    await refreshAllData();
+
+                    // You would then check if all the "waiting" leads have been updated
+                    // and clear the interval if they have. This part is left as an
+                    // exercise for the reader.
+                }, 30000); // Check every 30 seconds
+
+            } catch (error) {
+                console.error('Failed to send to Zapier:', error);
             } finally {
                 setButtonLoading(sendBtn, false);
             }

@@ -37,6 +37,7 @@ services:
       - .env # Load environment variables
     volumes:
       - ./backend/leads.db:/app/leads.db
+      - ./backend/credentials:/app/credentials # <-- ADD THIS LINE
     # UPDATE THE depends_on BLOCK LIKE THIS 👇
     depends_on:
       db:
