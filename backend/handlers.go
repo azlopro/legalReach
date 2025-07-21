@@ -881,7 +881,10 @@ func sendToZapier(c *gin.Context) {
 							log.Printf("WARNING: Zapier marked lead %d as '3' (Gemini AI Failed response)", currentLead.ID)
 							// If status is "0" or anything else, just continue polling.
 							return
-
+						case "4":
+							log.Printf("WARNING: Zapier marked lead %d as '4' (Email Lead number Parsing failed)", currentLead.ID)
+							// If status is "0" or anything else, just continue polling.
+							return
 						}
 						log.Printf("Polling attempt %d for lead %d: Status is '%s', waiting for '1' or '3'.", attempt+1, currentLead.ID, status)
 
