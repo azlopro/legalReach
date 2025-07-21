@@ -751,7 +751,6 @@ func getLeadStatusFromSheet(srv *sheets.Service, sheetID, sheetName string, lead
 	return fmt.Sprintf("%v", resp.Values[0][0]), nil
 }
 
-// MODIFIED: This function now correctly manages the 'pending' state.
 func sendToZapier(c *gin.Context) {
 	var requestBody struct {
 		LeadIDs         []uint `json:"lead_ids"`
@@ -767,12 +766,6 @@ func sendToZapier(c *gin.Context) {
 		return
 	}
 
-	sheetsService, err := getSheetsService()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": fmt.Sprintf("Failed to initialize Google Sheets service: %v", err)}})
-		return
-	}
-
 	// --- CHANGE: Update lead status to 'pending' in a transaction first ---
 	if err := db.Model(&Lead{}).Where("id IN ?", requestBody.LeadIDs).Update("status", "pending").Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update lead status to pending"})
@@ -780,104 +773,103 @@ func sendToZapier(c *gin.Context) {
 	}
 	// --- END CHANGE ---
 
-	var leads []Lead
-	db.Where("id IN ?", requestBody.LeadIDs).Find(&leads)
-	var emailsSent, emailsFailed int
+	// --- Start background processing ---
+	go func() {
+		sheetsService, err := getSheetsService()
+		if err != nil {
+			log.Printf("Failed to initialize Google Sheets service for background job: %v", err)
+			db.Model(&Lead{}).Where("id IN ?", requestBody.LeadIDs).Update("status", "new") // Revert status
+			return
+		}
 
-	for i, lead := range leads {
-		subject := fmt.Sprintf("Lead %d: %s", lead.ID, lead.Name)
-		body := fmt.Sprintf("Email: %s\nCompany: %s", lead.Email, lead.Company)
+		var leads []Lead
+		db.Where("id IN ?", requestBody.LeadIDs).Find(&leads)
 
-		if err := sendSMTPEmail(ZapierEmail, subject, body); err != nil {
-			emailsFailed++
-			log.Printf("Failed to send email to Zapier for lead %d: %v", lead.ID, err)
-			// --- CHANGE: Revert status on immediate failure ---
-			db.Model(&lead).Update("status", "new")
-			// --- END CHANGE ---
-		} else {
-			emailsSent++
-			log.Printf("Successfully sent email to Zapier for lead %d", lead.ID)
+		for i, lead := range leads {
+			subject := fmt.Sprintf("Lead %d: %s", lead.ID, lead.Name)
+			body := fmt.Sprintf("Email: %s\nCompany: %s", lead.Email, lead.Company)
 
-			go func(currentLead Lead) {
-				values := []interface{}{currentLead.ID, 0}
-				if err := appendToSheet(sheetsService, GoogleSheetID, "Sheet1", values); err != nil {
-					log.Printf("Failed to append to sheet for lead %d: %v", currentLead.ID, err)
-					// --- CHANGE: Revert status if sheet write fails ---
-					db.Model(&currentLead).Update("status", "new")
-					// --- END CHANGE ---
-					return
-				}
+			if err := sendSMTPEmail(ZapierEmail, subject, body); err != nil {
+				log.Printf("Failed to send email to Zapier for lead %d: %v", lead.ID, err)
+				db.Model(&lead).Update("status", "new") // Revert status on failure
+			} else {
+				log.Printf("Successfully sent email to Zapier for lead %d", lead.ID)
 
-				go func() {
-					const maxRetries = 12
-					const initialDelay = 5 * time.Second
-					const maxDelay = 60 * time.Second
-					delay := initialDelay
+				go func(currentLead Lead) {
+					values := []interface{}{currentLead.ID, 0}
+					if err := appendToSheet(sheetsService, GoogleSheetID, "Sheet1", values); err != nil {
+						log.Printf("Failed to append to sheet for lead %d: %v", currentLead.ID, err)
+						db.Model(&currentLead).Update("status", "new") // Revert status
+						return
+					}
 
-					for attempt := 0; attempt < maxRetries; attempt++ {
-						time.Sleep(delay)
-						status, err := getLeadStatusFromSheet(sheetsService, GoogleSheetID, "Sheet1", currentLead.ID)
-						if err != nil {
-							log.Printf("Polling attempt %d for lead %d: Waiting for Zapier... (%v)", attempt+1, currentLead.ID, err)
+					go func() {
+						const maxRetries = 12
+						const initialDelay = 10 * time.Second
+						const maxDelay = 60 * time.Second
+						delay := initialDelay
+
+						for attempt := 0; attempt < maxRetries; attempt++ {
+							time.Sleep(delay)
+							status, err := getLeadStatusFromSheet(sheetsService, GoogleSheetID, "Sheet1", currentLead.ID)
+							if err != nil {
+								log.Printf("Polling attempt %d for lead %d: Waiting for Zapier... (%v)", attempt+1, currentLead.ID, err)
+								delay *= 2
+								if delay > maxDelay {
+									delay = maxDelay
+								}
+								continue
+							}
+
+							shouldExitPolling := false
+							switch status {
+							case "1":
+								log.Printf("SUCCESS: Zapier confirmed processing for lead %d. Updating status to 'contacted'.", currentLead.ID)
+								db.Model(&currentLead).Update("status", "contacted")
+								shouldExitPolling = true
+							case "2", "3", "4":
+								log.Printf("ERROR/WARNING: Zapier reported status '%s' for lead %d. Reverting to 'new'.", status, currentLead.ID)
+								db.Model(&currentLead).Update("status", "new")
+								shouldExitPolling = true
+							default:
+								log.Printf("Polling attempt %d for lead %d: Status is '%s', waiting...", attempt+1, currentLead.ID, status)
+							}
+
+							if shouldExitPolling {
+								return // Exit the polling loop.
+							}
+
 							delay *= 2
 							if delay > maxDelay {
 								delay = maxDelay
 							}
-							continue
 						}
 
-						// --- CHANGE: More robust status handling ---
-						shouldExitPolling := false
-						switch status {
-						case "1":
-							log.Printf("SUCCESS: Zapier confirmed processing for lead %d. Updating status to 'contacted'.", currentLead.ID)
-							db.Model(&currentLead).Update("status", "contacted")
-							shouldExitPolling = true
-						case "2", "3", "4":
-							log.Printf("ERROR/WARNING: Zapier reported status '%s' for lead %d. Reverting to 'new'.", status, currentLead.ID)
-							db.Model(&currentLead).Update("status", "new")
-							shouldExitPolling = true
-						default:
-							log.Printf("Polling attempt %d for lead %d: Status is '%s', waiting...", attempt+1, currentLead.ID, status)
-						}
-
-						if shouldExitPolling {
-							return // Exit the polling loop.
-						}
-						// --- END CHANGE ---
-
-						delay *= 2
-						if delay > maxDelay {
-							delay = maxDelay
-						}
-					}
-
-					// --- CHANGE: Timeout handling ---
-					log.Printf("TIMEOUT: Polling for lead %d stopped. Reverting to 'new'.", currentLead.ID)
-					db.Model(&currentLead).Update("status", "new")
-					// --- END CHANGE ---
-				}()
-			}(lead)
-		}
-
-		if i < len(leads)-1 && requestBody.IntervalSeconds > 0 {
-			jitterMagnitude := int(float64(requestBody.IntervalSeconds) * 0.30)
-			if jitterMagnitude == 0 {
-				jitterMagnitude = 1
+						log.Printf("TIMEOUT: Polling for lead %d stopped. Reverting to 'new'.", currentLead.ID)
+						db.Model(&currentLead).Update("status", "new")
+					}()
+				}(lead)
 			}
-			randomJitter := rand.Intn(jitterMagnitude*2) - jitterMagnitude
-			sleepDuration := time.Duration(requestBody.IntervalSeconds+randomJitter) * time.Second
-			if sleepDuration < time.Second {
-				sleepDuration = time.Second
-			}
-			log.Printf("Waiting for next send: Base Interval: %ds, Jitter: %ds, Final Wait: %v", requestBody.IntervalSeconds, randomJitter, sleepDuration)
-			time.Sleep(sleepDuration)
-		}
-	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message":       "Zapier process initiated. Leads moved to 'Pending' status.",
-		"emails_sent":   emailsSent,
-		"emails_failed": emailsFailed,
+			// Wait before sending the next email
+			if i < len(leads)-1 && requestBody.IntervalSeconds > 0 {
+				jitterMagnitude := int(float64(requestBody.IntervalSeconds) * 0.30)
+				if jitterMagnitude == 0 {
+					jitterMagnitude = 1
+				}
+				randomJitter := rand.Intn(jitterMagnitude*2) - jitterMagnitude
+				sleepDuration := time.Duration(requestBody.IntervalSeconds+randomJitter) * time.Second
+				if sleepDuration < time.Second {
+					sleepDuration = time.Second
+				}
+				log.Printf("Waiting for next send: Base Interval: %ds, Jitter: %ds, Final Wait: %v", requestBody.IntervalSeconds, randomJitter, sleepDuration)
+				time.Sleep(sleepDuration)
+			}
+		}
+	}()
+
+	// Respond immediately
+	c.JSON(http.StatusAccepted, gin.H{
+		"message": "Zapier process initiated in the background. Leads moved to 'Pending' status.",
 	})
 }

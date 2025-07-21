@@ -1,3 +1,4 @@
+// frontend/script.js
 const API_BASE_URL = 'http://localhost:3000';
 const API_KEY = 'a-very-secret-api-key-change-me'; // <-- IMPORTANT: Replace with your actual API key
 
@@ -1153,10 +1154,7 @@ async function sendToZapier() {
                 }),
             });
             const result = await response.json();
-            showNotification(
-                `Zapier send completed: ${result.emails_sent} sent, ${result.emails_failed} failed. Estimated completion: ${result.estimated_completion_time}`, 
-                'success'
-            );
+            showNotification(result.message, 'success');
             
             selectedLeads.clear();
             closeZapierModal();
