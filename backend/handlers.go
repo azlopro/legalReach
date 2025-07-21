@@ -26,31 +26,26 @@ func deleteLead(c *gin.Context) {
 		return
 	}
 
-	// Use a transaction to ensure all or nothing is deleted
 	tx := db.Begin()
 
-	// Delete associated conflicts
 	if err := tx.Where("lead_id = ?", leadID).Delete(&Conflict{}).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete associated conflicts"})
 		return
 	}
 
-	// Delete associated validations
 	if err := tx.Where("lead_id = ?", leadID).Delete(&Validation{}).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete associated validations"})
 		return
 	}
 
-	// Delete associated disputes
 	if err := tx.Where("lead_id = ?", leadID).Delete(&Dispute{}).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete associated disputes"})
 		return
 	}
 
-	// Delete the lead itself
 	if err := tx.Delete(&lead).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete lead"})
@@ -75,15 +70,12 @@ func validateSingleLeadEmail(c *gin.Context) {
 		return
 	}
 
-	// Check for an existing validation record
 	var existingValidation Validation
 	if db.Where("lead_id = ?", lead.ID).First(&existingValidation).Error == nil {
-		// If the existing validation was a success (valid) or a definitive failure (invalid), don't re-validate.
 		if existingValidation.Result == "valid" || existingValidation.Result == "invalid" {
 			c.JSON(http.StatusConflict, gin.H{"error": "This lead has already been conclusively validated.", "validation": existingValidation})
 			return
 		}
-		// If it was an 'unknown' or other error state, we can delete it and proceed with a new validation.
 		if err := db.Delete(&existingValidation).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove previous failed validation record"})
 			return
@@ -142,7 +134,6 @@ func getLeads(c *gin.Context) {
 	var leads []Lead
 	query.Offset(offset).Limit(perPage).Order("created_at DESC").Find(&leads)
 
-	// --- NEW: Fetch and attach latest validation for each lead ---
 	var leadIDs []uint
 	for _, l := range leads {
 		leadIDs = append(leadIDs, l.ID)
@@ -177,7 +168,6 @@ func getLeads(c *gin.Context) {
 			responseData = append(responseData, leadMap)
 		}
 	}
-	// --- END NEW ---
 
 	totalPages := int((total + int64(perPage) - 1) / int64(perPage))
 
@@ -192,9 +182,7 @@ func getLeads(c *gin.Context) {
 	})
 }
 
-// Import function that captures and uses settings
 func importLeads(c *gin.Context) {
-	// Capture file upload
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "File upload failed"})
@@ -202,7 +190,6 @@ func importLeads(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// Save the file to a temporary location
 	tempDir := filepath.Join(os.TempDir(), "lead_imports")
 	os.MkdirAll(tempDir, os.ModePerm)
 	filename := uuid.New().String() + filepath.Ext(header.Filename)
@@ -213,12 +200,10 @@ func importLeads(c *gin.Context) {
 		return
 	}
 
-	// Parse import settings from form data
 	enableValidation := c.DefaultPostForm("enable_validation", "true") == "true"
 	enableConflictDetection := c.DefaultPostForm("enable_conflict_detection", "true") == "true"
 	autoMarkDisputed := c.DefaultPostForm("auto_mark_disputed", "true") == "true"
 
-	//  Create job record with settings
 	job := ImportJob{
 		OriginalFilename:        header.Filename,
 		FilePath:                savedPath,
@@ -237,10 +222,8 @@ func importLeads(c *gin.Context) {
 		return
 	}
 
-	// Launch the background processor
 	go processImportJob(job.ID)
 
-	// Return detailed response
 	c.JSON(http.StatusAccepted, gin.H{
 		"message": "File upload accepted. Processing will continue in the background.",
 		"job_id":  job.ID,
@@ -256,6 +239,7 @@ func getEnhancedStats(c *gin.Context) {
 	stats := EnhancedStats{}
 	db.Model(&Lead{}).Where("status = ?", "new").Count(&stats.NewLeads)
 	db.Model(&Lead{}).Where("status = ?", "contacted").Count(&stats.ContactedLeads)
+	db.Model(&Lead{}).Where("status = ?", "pending").Count(&stats.PendingLeads) // ADD THIS LINE
 
 	var disputedLeadIds []uint
 	db.Model(&Dispute{}).Where("status = ?", "open").Pluck("lead_id", &disputedLeadIds)
@@ -264,14 +248,13 @@ func getEnhancedStats(c *gin.Context) {
 	db.Model(&Conflict{}).Where("conflict_type = ?", "same_domain").Count(&stats.DisputeStats.SameDomainConflicts)
 	db.Model(&Conflict{}).Where("conflict_type = ?", "duplicate_email").Count(&stats.DisputeStats.DuplicateEmailConflicts)
 	db.Model(&Conflict{}).Where("conflict_type = ?", "similar_name").Count(&stats.DisputeStats.SimilarNameConflicts)
-	db.Model(&Conflict{}).Where("conflict_type = ?", "contacted_company_domain").Count(&stats.DisputeStats.ContactedDomainConflicts) // ADD THIS LINE
+	db.Model(&Conflict{}).Where("conflict_type = ?", "contacted_company_domain").Count(&stats.DisputeStats.ContactedDomainConflicts)
 	stats.DisputeStats.TotalDisputed = stats.DisputedLeads
 
 	db.Model(&Validation{}).Where("result = ?", "valid").Count(&stats.ValidationStats.ValidEmails)
 	db.Model(&Validation{}).Where("result = ?", "invalid").Count(&stats.ValidationStats.InvalidEmails)
 	db.Model(&Validation{}).Where("result = ?", "unknown").Count(&stats.ValidationStats.UnknownEmails)
 
-	// Enhanced validation service statistics
 	db.Model(&Validation{}).Where("service = ?", "QuickEmailVerification").Count(&stats.ValidationStats.QuickEmailUsed)
 	db.Model(&Validation{}).Where("service = ?", "MyEmailVerifier").Count(&stats.ValidationStats.MyEmailVerifierUsed)
 	db.Model(&Validation{}).Where("credit_status = ?", "fallback_used").Count(&stats.ValidationStats.FallbacksUsed)
@@ -280,9 +263,7 @@ func getEnhancedStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
-// COMPLETELY REWRITTEN: Process import job with proper conflict handling
 func processImportJob(jobID uint) {
-	// Retrieve the job from the DB
 	var job ImportJob
 	if err := db.First(&job, jobID).Error; err != nil {
 		log.Printf("Failed to retrieve import job %d: %v", jobID, err)
@@ -292,7 +273,6 @@ func processImportJob(jobID uint) {
 	log.Printf("Starting import job %d with settings: validation=%v, conflicts=%v, auto_disputed=%v",
 		job.ID, job.EnableValidation, job.EnableConflictDetection, job.AutoMarkDisputed)
 
-	// Open the saved file
 	file, err := os.Open(job.FilePath)
 	if err != nil {
 		job.Status = "failed"
@@ -302,9 +282,8 @@ func processImportJob(jobID uint) {
 		return
 	}
 	defer file.Close()
-	defer os.Remove(job.FilePath) // Clean up the file when done
+	defer os.Remove(job.FilePath)
 
-	// Parse CSV
 	reader := csv.NewReader(file)
 	reader.FieldsPerRecord = -1
 	records, err := reader.ReadAll()
@@ -316,12 +295,10 @@ func processImportJob(jobID uint) {
 		return
 	}
 
-	// Update job status to "processing"
 	job.Status = "processing"
 	job.TotalRows = len(records) - 1
 	db.Save(&job)
 
-	// Parse column headers
 	headers := records[0]
 	columnMap := make(map[string]int)
 	for i, header := range headers {
@@ -347,11 +324,9 @@ func processImportJob(jobID uint) {
 	}
 	companyCol, companyOK := columnMap["company"]
 
-	// Process records
 	for i, record := range records[1:] {
 		job.ProcessedRows = i + 1
 
-		// Safely get data
 		if len(record) <= nameCol || len(record) <= emailCol {
 			continue
 		}
@@ -366,19 +341,17 @@ func processImportJob(jobID uint) {
 			company = strings.TrimSpace(record[companyCol])
 		}
 
-		// Check for existing lead
 		var existingLead Lead
 		if db.Where("email = ?", email).First(&existingLead).Error == nil {
 			log.Printf("Skipping duplicate email: %s", email)
-			continue // Skip duplicate
+			continue
 		}
 
-		// FIXED: Create lead with proper initial status
 		lead := Lead{
 			Name:      name,
 			Email:     email,
 			Company:   company,
-			Status:    "new", // Start as new, may be changed to disputed
+			Status:    "new",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -390,7 +363,6 @@ func processImportJob(jobID uint) {
 
 		log.Printf("Created lead %d: %s (%s)", lead.ID, lead.Name, lead.Email)
 
-		// FIXED: Process the lead completely with validation and conflict detection
 		hasConflicts, err := processLeadComplete(&lead, &job)
 		if err != nil {
 			log.Printf("Error processing lead %d: %v", lead.ID, err)
@@ -400,7 +372,6 @@ func processImportJob(jobID uint) {
 			log.Printf("Lead %d has conflicts and was marked as disputed", lead.ID)
 		}
 
-		// Update progress periodically
 		if job.ProcessedRows%10 == 0 || job.ProcessedRows == job.TotalRows {
 			if err := db.Save(&job).Error; err != nil {
 				log.Printf("Failed to update job progress: %v", err)
@@ -409,7 +380,6 @@ func processImportJob(jobID uint) {
 		}
 	}
 
-	// Finalize job
 	now := time.Now()
 	job.Status = "completed"
 	job.CompletedAt = &now
@@ -543,7 +513,6 @@ func bulkResolveDisputes(c *gin.Context) {
 		return
 	}
 
-	// Determine new lead status
 	var newStatus string
 	switch requestBody.Resolution {
 	case "accept":
@@ -557,10 +526,8 @@ func bulkResolveDisputes(c *gin.Context) {
 		return
 	}
 
-	// Update leads
 	db.Model(&Lead{}).Where("id IN ?", requestBody.LeadIDs).Update("status", newStatus)
 
-	// Update disputes
 	now := time.Now()
 	result := db.Model(&Dispute{}).Where("lead_id IN ? AND status = ?", requestBody.LeadIDs, "open").Updates(Dispute{
 		Status:     "resolved",
@@ -609,7 +576,6 @@ func exportLeads(c *gin.Context) {
 	}
 }
 
-// FIXED: Analyze conflicts function that properly marks leads as disputed
 func analyzeConflicts(c *gin.Context) {
 	var leads []Lead
 	db.Find(&leads)
@@ -617,7 +583,6 @@ func analyzeConflicts(c *gin.Context) {
 	var conflictsDetected, leadsMarkedDisputed int
 
 	for _, lead := range leads {
-		// Skip leads that are already disputed
 		if lead.Status == "disputed" {
 			continue
 		}
@@ -626,17 +591,14 @@ func analyzeConflicts(c *gin.Context) {
 		if len(conflicts) > 0 {
 			conflictsDetected += len(conflicts)
 
-			// Mark lead as disputed
 			lead.Status = "disputed"
 			if err := db.Save(&lead).Error; err != nil {
 				log.Printf("Failed to update lead %d status to disputed: %v", lead.ID, err)
 				continue
 			}
 
-			// Create or update dispute record
 			var existingDispute Dispute
 			if db.Where("lead_id = ? AND status = ?", lead.ID, "open").First(&existingDispute).Error != nil {
-				// No existing open dispute, create new one
 				dispute := Dispute{
 					LeadID:    lead.ID,
 					Status:    "open",
@@ -669,7 +631,6 @@ func validateDisputedEmails(c *gin.Context) {
 	var quickEmailUsed, myEmailVerifierUsed, fallbacksUsed, creditFailures int
 
 	for _, lead := range leads {
-		// Check if validation already exists
 		var existingValidation Validation
 		if db.Where("lead_id = ?", lead.ID).First(&existingValidation).Error == nil {
 			log.Printf("Validation already exists for lead %d, skipping", lead.ID)
@@ -690,7 +651,6 @@ func validateDisputedEmails(c *gin.Context) {
 		} else {
 			validationsPerformed++
 
-			// Track service usage
 			switch service {
 			case "QuickEmailVerification":
 				quickEmailUsed++
@@ -746,7 +706,6 @@ func sendEmails(c *gin.Context) {
 }
 
 func findRowByLeadID(srv *sheets.Service, sheetID, sheetName string, leadID uint) (int, error) {
-	// Range for the entire column A
 	readRange := fmt.Sprintf("%s!A:A", sheetName)
 	resp, err := srv.Spreadsheets.Values.Get(sheetID, readRange).Do()
 	if err != nil {
@@ -759,10 +718,8 @@ func findRowByLeadID(srv *sheets.Service, sheetID, sheetName string, leadID uint
 
 	leadIDStr := strconv.FormatUint(uint64(leadID), 10)
 
-	// Iterate through the rows of column A to find the lead ID
 	for i, row := range resp.Values {
 		if len(row) > 0 && row[0] == leadIDStr {
-			// Return the 1-based row index
 			return i + 1, nil
 		}
 	}
@@ -773,24 +730,23 @@ func findRowByLeadID(srv *sheets.Service, sheetID, sheetName string, leadID uint
 func getLeadStatusFromSheet(srv *sheets.Service, sheetID, sheetName string, leadID uint) (string, error) {
 	rowNum, err := findRowByLeadID(srv, sheetID, sheetName, leadID)
 	if err != nil {
-		return "", err // Propagate the error (e.g., lead not found yet)
+		return "", err
 	}
 
-	// Now get the value from column B of that row
 	readRange := fmt.Sprintf("%s!B%d", sheetName, rowNum)
 	resp, err := srv.Spreadsheets.Values.Get(sheetID, readRange).Do()
 	if err != nil {
 		return "", fmt.Errorf("unable to retrieve status for lead %d (row %d): %v", leadID, rowNum, err)
 	}
 
-	// If the cell is empty, it means Zapier hasn't updated it yet.
 	if len(resp.Values) == 0 || len(resp.Values[0]) == 0 {
-		return "0", nil // Return "0" (Not Contacted) as the default status
+		return "0", nil
 	}
 
 	return fmt.Sprintf("%v", resp.Values[0][0]), nil
 }
 
+// MODIFIED: This function now correctly manages the 'pending' state.
 func sendToZapier(c *gin.Context) {
 	var requestBody struct {
 		LeadIDs         []uint `json:"lead_ids"`
@@ -812,6 +768,13 @@ func sendToZapier(c *gin.Context) {
 		return
 	}
 
+	// --- CHANGE: Update lead status to 'pending' in a transaction first ---
+	if err := db.Model(&Lead{}).Where("id IN ?", requestBody.LeadIDs).Update("status", "pending").Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update lead status to pending"})
+		return
+	}
+	// --- END CHANGE ---
+
 	var leads []Lead
 	db.Where("id IN ?", requestBody.LeadIDs).Find(&leads)
 	var emailsSent, emailsFailed int
@@ -823,39 +786,34 @@ func sendToZapier(c *gin.Context) {
 		if err := sendSMTPEmail(ZapierEmail, subject, body); err != nil {
 			emailsFailed++
 			log.Printf("Failed to send email to Zapier for lead %d: %v", lead.ID, err)
+			// --- CHANGE: Revert status on immediate failure ---
+			db.Model(&lead).Update("status", "new")
+			// --- END CHANGE ---
 		} else {
 			emailsSent++
 			log.Printf("Successfully sent email to Zapier for lead %d", lead.ID)
 
-			// This goroutine handles writing to the sheet and then waiting for Zapier's update.
 			go func(currentLead Lead) {
-				// Immediately record that the lead was sent (status 0).
-				values := []interface{}{currentLead.ID, 0} // 0 = Not Contacted / Pending
+				values := []interface{}{currentLead.ID, 0}
 				if err := appendToSheet(sheetsService, GoogleSheetID, "Sheet1", values); err != nil {
 					log.Printf("Failed to append to sheet for lead %d: %v", currentLead.ID, err)
-					return // Don't proceed with polling if the initial write fails.
+					// --- CHANGE: Revert status if sheet write fails ---
+					db.Model(&currentLead).Update("status", "new")
+					// --- END CHANGE ---
+					return
 				}
 
-				// --- NEW ROBUST POLLING LOGIC ---
-				// This goroutine will poll the Google Sheet for a status update from Zapier.
 				go func() {
-					const maxRetries = 12 // Total attempts
+					const maxRetries = 12
 					const initialDelay = 5 * time.Second
 					const maxDelay = 60 * time.Second
-
 					delay := initialDelay
 
 					for attempt := 0; attempt < maxRetries; attempt++ {
-						// Wait before checking.
 						time.Sleep(delay)
-
-						// --- FIX: Use the robust function that finds the row by Lead ID ---
-						// This replaces the unreliable method of guessing the row with 'i'.
 						status, err := getLeadStatusFromSheet(sheetsService, GoogleSheetID, "Sheet1", currentLead.ID)
 						if err != nil {
-							// This can happen if Zapier hasn't created the row yet. It's not a fatal error.
-							log.Printf("Polling attempt %d for lead %d: Waiting for Zapier to update the sheet... (%v)", attempt+1, currentLead.ID, err)
-							// Double the delay for the next attempt (exponential backoff).
+							log.Printf("Polling attempt %d for lead %d: Waiting for Zapier... (%v)", attempt+1, currentLead.ID, err)
 							delay *= 2
 							if delay > maxDelay {
 								delay = maxDelay
@@ -863,46 +821,41 @@ func sendToZapier(c *gin.Context) {
 							continue
 						}
 
-						// --- Status Handling ---
+						// --- CHANGE: More robust status handling ---
+						shouldExitPolling := false
 						switch status {
-						case "1": // Success!
+						case "1":
 							log.Printf("SUCCESS: Zapier confirmed processing for lead %d. Updating status to 'contacted'.", currentLead.ID)
-							currentLead.Status = "contacted"
-							if err := db.Save(&currentLead).Error; err != nil {
-								log.Printf("ERROR: Failed to update lead %d status in database: %v", currentLead.ID, err)
-							}
-							return // Exit the polling loop on success.
-
-						case "2": // Error reported by Zapier.
-							log.Printf("ERROR: Zapier reported an error for lead %d. Check Zapier logs for details.", currentLead.ID)
-							// You could potentially set a different status here, like "zapier_error".
-							return // Exit the polling loop on error.
-						case "3":
-							log.Printf("WARNING: Zapier marked lead %d as '3' (Gemini AI Failed response)", currentLead.ID)
-							// If status is "0" or anything else, just continue polling.
-							return
-						case "4":
-							log.Printf("WARNING: Zapier marked lead %d as '4' (Email Lead number Parsing failed)", currentLead.ID)
-							// If status is "0" or anything else, just continue polling.
-							return
+							db.Model(&currentLead).Update("status", "contacted")
+							shouldExitPolling = true
+						case "2", "3", "4":
+							log.Printf("ERROR/WARNING: Zapier reported status '%s' for lead %d. Reverting to 'new'.", status, currentLead.ID)
+							db.Model(&currentLead).Update("status", "new")
+							shouldExitPolling = true
+						default:
+							log.Printf("Polling attempt %d for lead %d: Status is '%s', waiting...", attempt+1, currentLead.ID, status)
 						}
-						log.Printf("Polling attempt %d for lead %d: Status is '%s', waiting for '1' or '3'.", attempt+1, currentLead.ID, status)
 
-						// Increase delay for next attempt.
+						if shouldExitPolling {
+							return // Exit the polling loop.
+						}
+						// --- END CHANGE ---
+
 						delay *= 2
 						if delay > maxDelay {
 							delay = maxDelay
 						}
 					}
 
-					// If the loop finishes without returning, it timed out.
-					log.Printf("TIMEOUT: Polling for lead %d stopped after %d attempts. No final status received from Zapier.", currentLead.ID, maxRetries)
+					// --- CHANGE: Timeout handling ---
+					log.Printf("TIMEOUT: Polling for lead %d stopped. Reverting to 'new'.", currentLead.ID)
+					db.Model(&currentLead).Update("status", "new")
+					// --- END CHANGE ---
 				}()
 			}(lead)
 		}
 
 		if i < len(leads)-1 && requestBody.IntervalSeconds > 0 {
-			// (Jitter logic remains the same)
 			jitterMagnitude := int(float64(requestBody.IntervalSeconds) * 0.30)
 			if jitterMagnitude == 0 {
 				jitterMagnitude = 1
@@ -918,7 +871,7 @@ func sendToZapier(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":       "Zapier process initiated. The application will wait for status updates from Google Sheets.",
+		"message":       "Zapier process initiated. Leads moved to 'Pending' status.",
 		"emails_sent":   emailsSent,
 		"emails_failed": emailsFailed,
 	})

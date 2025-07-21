@@ -71,6 +71,7 @@ type DisputesResponse struct {
 type EnhancedStats struct {
 	NewLeads       int64 `json:"new_leads"`
 	ContactedLeads int64 `json:"contacted_leads"`
+	PendingLeads   int64 `json:"pending_leads"` // ADD THIS LINE
 	DisputedLeads  int   `json:"disputed_leads"`
 	DisputeStats   struct {
 		TotalDisputed            int   `json:"total_disputed"`
