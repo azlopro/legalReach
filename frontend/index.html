@@ -289,13 +289,6 @@
             border: 1px solid #68d391;
         }
 
-        .status-pending {
-            background: #fefcbf;
-            color: #b45309;
-            border: 1px solid #f59e0b;
-            animation: pulse 2s infinite;
-        }
-
         .status-qualified {
             background: #fef5e7;
             color: #ed8936;
@@ -355,7 +348,7 @@
             background: #fdf2f8;
             color: #d53f8c;
         }
-        .conflict-contacted-company-domain {
+        .conflict-contacted-company-domain { /* ADD THIS ENTIRE BLOCK */
             background: #eef2ff;
             color: #4338ca;
         }
@@ -384,6 +377,7 @@
             color: #718096;
         }
 
+        /* NEW: Service indicator styles */
         .service-indicator {
             padding: 2px 6px;
             border-radius: 6px;
@@ -700,6 +694,7 @@
             margin-bottom: 5px;
         }
 
+        /* NEW: Validation service info box */
         .validation-service-info {
             background: #f0f9ff;
             border: 2px solid #3b82f6;
@@ -760,15 +755,13 @@
                 <button class="tab" onclick="switchView('contacted')" id="contactedTab">
                     Contacted Leads (<span id="contactedCount">0</span>)
                 </button>
-                <button class="tab" onclick="switchView('pending')" id="pendingTab">
-                    Pending (<span id="pendingCount">0</span>)
-                </button>
                 <button class="tab" onclick="switchView('disputed')" id="disputedTab">
                     Disputed Leads (<span id="disputedCount">0</span>)
                     <span class="tab-badge" id="disputeBadge" style="display: none;">!</span>
                 </button>
             </div>
 
+            <!-- NEW: Validation service info -->
             <div id="validationServiceInfo" class="validation-service-info" style="display: none;">
                 <strong>📧 Email Verification Services</strong>
                 Primary: QuickEmailVerification | Fallback: MyEmailVerifier<br>
@@ -784,6 +777,7 @@
             </div>
 
             <div id="statsGrid" class="stats-grid" style="display: none;">
+                <!-- Stats will be populated dynamically -->
             </div>
 
             <div class="controls">
@@ -818,6 +812,7 @@
                     <span>📞</span> Mark as Contacted
                 </button>
 
+                <!-- Dispute-specific actions -->
                 <div id="disputeActions" style="display: none;">
                     <button class="btn btn-success" id="bulkAcceptBtn" onclick="openBulkResolveModal('accept')" disabled>
                         <span>✅</span> Accept Selected
@@ -837,8 +832,10 @@
             <div class="table-container">
                 <table>
                     <thead id="tableHeader">
+                        <!-- Headers will be populated dynamically -->
                     </thead>
                     <tbody id="leadsTableBody">
+                        <!-- Content will be populated dynamically -->
                     </tbody>
                 </table>
                 
@@ -849,10 +846,12 @@
             </div>
 
             <div class="pagination" id="pagination">
+                <!-- Pagination will be populated dynamically -->
             </div>
         </div>
     </div>
 
+    <!-- Import Options Modal -->
     <div id="importModal" class="modal">
         <div class="modal-content">
             <h2>Import CSV Options</h2>
@@ -878,7 +877,7 @@
                 <input type="file" id="csvFile" accept=".csv" required>
             </div>
             <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeModal('importModal')">Cancel</button>
+                <button class="btn btn-secondary" onclick="closeImportModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="startImport()">
                     <span id="importBtnText">Start Import</span>
                     <span id="importBtnLoading" class="loading" style="display: none;"></span>
@@ -887,6 +886,7 @@
         </div>
     </div>
 
+    <!-- Email Modal -->
     <div id="emailModal" class="modal">
         <div class="modal-content">
             <h2>Send Email to Selected Leads</h2>
@@ -899,7 +899,7 @@
                 <textarea id="emailBody" placeholder="Enter your message..."></textarea>
             </div>
             <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeModal('emailModal')">Cancel</button>
+                <button class="btn btn-secondary" onclick="closeEmailModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="sendEmails()">
                     <span id="sendBtnText">Send Email</span>
                     <span id="sendBtnLoading" class="loading" style="display: none;"></span>
@@ -908,13 +908,14 @@
         </div>
     </div>
 
+    <!-- Zapier Modal -->
     <div id="zapierModal" class="modal">
         <div class="modal-content">
             <h2>Send Leads to Zapier Webhook</h2>
             <div class="zapier-info">
                 <strong>⚡ Zapier Integration Info:</strong>
                 Each lead will be sent individually to: <strong>odf86lbl@robot.zapier.com</strong><br>
-                The backend will update the lead status to 'pending' and then poll for a final status from Zapier.
+                Subject: Lead ID | Body: Lead Email
             </div>
             <div class="form-group">
                 <label for="intervalSeconds">Interval between emails (seconds)</label>
@@ -927,7 +928,7 @@
                 <strong>Estimated completion time:</strong> <span id="estimatedTimeText">-</span>
             </div>
             <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeModal('zapierModal')">Cancel</button>
+                <button class="btn btn-secondary" onclick="closeZapierModal()">Cancel</button>
                 <button class="btn btn-zapier" onclick="sendToZapier()">
                     <span id="zapierBtnText">⚡ Start Sending</span>
                     <span id="zapierBtnLoading" class="loading" style="display: none;"></span>
@@ -936,6 +937,7 @@
         </div>
     </div>
 
+    <!-- Dispute Resolution Modal -->
     <div id="disputeModal" class="modal">
         <div class="modal-content">
             <h2 id="disputeModalTitle">Resolve Dispute</h2>
@@ -953,7 +955,7 @@
                 <textarea id="resolutionNotes" placeholder="Add notes about the resolution..."></textarea>
             </div>
             <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeModal('disputeModal')">Cancel</button>
+                <button class="btn btn-secondary" onclick="closeDisputeModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="resolveDispute()">
                     <span id="disputeBtnText">Resolve Dispute</span>
                     <span id="disputeBtnLoading" class="loading" style="display: none;"></span>
@@ -962,6 +964,7 @@
         </div>
     </div>
 
+    <!-- Bulk Resolve Modal -->
     <div id="bulkResolveModal" class="modal">
         <div class="modal-content">
             <h2 id="bulkResolveTitle">Bulk Resolve Disputes</h2>
@@ -971,7 +974,7 @@
                 <textarea id="bulkResolutionNotes" placeholder="Add notes about the bulk resolution..."></textarea>
             </div>
             <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeModal('bulkResolveModal')">Cancel</button>
+                <button class="btn btn-secondary" onclick="closeBulkResolveModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="confirmBulkResolve()">
                     <span id="bulkResolveBtnText">Confirm</span>
                     <span id="bulkResolveBtnLoading" class="loading" style="display: none;"></span>
@@ -980,11 +983,11 @@
         </div>
     </div>
 
-    <input type="file" id="csvFileInput" class="file-input" accept=".csv" onchange="triggerFileUpload()">
+    <input type="file" id="csvFileInput" class="file-input" accept=".csv" onchange="handleFileUpload(event)">
 
     <script>
         const API_BASE_URL = 'http://localhost:3000';
-        const API_KEY = 'your-secure-api-key-here';
+        const API_KEY = 'a-very-secret-api-key-change-me'; // <-- IMPORTANT: Replace with your actual API key
 
         let allLeads = [];
         let paginationInfo = {};
@@ -996,9 +999,116 @@
         let currentValidationFilter = '';
         let currentDisputeAction = '';
         let enhancedStats = null;
-        let jobPollingInterval = null;
-        let isInitialized = false;
+        let jobPollingInterval = null; // To hold our polling timer
+        let isInitialized = false; // Flag to track initialization
 
+        // ================== ENHANCED DATA REFRESH SYSTEM ==================
+
+        // Enhanced data refresh function with retry logic
+        async function refreshAllData(retries = 3) {
+            console.log('Refreshing all data...');
+            
+            for (let attempt = 1; attempt <= retries; attempt++) {
+                try {
+                    // Add a small delay to ensure backend operations are complete
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    // Fetch both stats and leads data
+                    await Promise.all([
+                        fetchEnhancedStats(),
+                        fetchLeads()
+                    ]);
+                    
+                    console.log('Data refresh completed successfully');
+                    return;
+                } catch (error) {
+                    console.error(`Data refresh attempt ${attempt} failed:`, error);
+                    if (attempt === retries) {
+                        showNotification('Failed to refresh data. Please refresh the page.', 'error');
+                        throw error;
+                    }
+                    // Wait before retrying
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+        }
+
+        // Enhanced operation wrapper that ensures data refresh
+        async function performOperation(operationName, operationFn) {
+            console.log(`Starting operation: ${operationName}`);
+            
+            try {
+                // Perform the operation
+                await operationFn();
+                
+                // Always refresh data after any operation
+                await refreshAllData();
+                
+                console.log(`Operation completed: ${operationName}`);
+            } catch (error) {
+                console.error(`Operation failed: ${operationName}`, error);
+                
+                // Even if operation failed, try to refresh data to get current state
+                try {
+                    await refreshAllData();
+                } catch (refreshError) {
+                    console.error('Failed to refresh data after operation failure', refreshError);
+                }
+                
+                throw error;
+            }
+        }
+
+        // Clear cached data function
+        function clearCachedData() {
+            allLeads = [];
+            selectedLeads.clear();
+            enhancedStats = null;
+            console.log('Cached data cleared');
+        }
+
+        // ================== ENHANCED API AND EVENT FUNCTIONS ==================
+
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Application initializing...');
+            
+            // First set up the initial table headers
+            updateTableHeaders();
+            
+            // Set up event listeners
+            setupEventListeners();
+            
+            // Mark as initialized
+            isInitialized = true;
+            
+            // Initial data load with retry - delay slightly to ensure DOM is ready
+            setTimeout(async () => {
+                try {
+                    await refreshAllData();
+                } catch (error) {
+                    console.error('Initial data load failed:', error);
+                    showNotification('Failed to load initial data. Please refresh the page.', 'error');
+                }
+            }, 100);
+        });
+
+        function setupEventListeners() {
+            document.getElementById('searchInput').addEventListener('input', debounce(handleSearch, 300));
+            document.getElementById('intervalSeconds')?.addEventListener('input', updateEstimatedTime);
+            
+            ['emailModal', 'zapierModal', 'disputeModal', 'bulkResolveModal', 'importModal'].forEach(modalId => {
+                const modal = document.getElementById(modalId);
+                modal?.addEventListener('click', (e) => {
+                    if (e.target === modal) closeModal(modalId);
+                });
+            });
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        // Enhanced apiFetch with cache-busting
         async function apiFetch(endpoint, options = {}) {
             const defaultOptions = {
                 headers: {
@@ -1016,165 +1126,93 @@
             const mergedOptions = { ...defaultOptions, ...options };
             mergedOptions.headers = { ...defaultOptions.headers, ...options.headers };
             
+            // Add cache-busting timestamp for GET requests
             let finalEndpoint = endpoint;
-            if (!options.method || options.method.toUpperCase() === 'GET') {
+            if (!options.method || options.method === 'GET') {
                 const separator = endpoint.includes('?') ? '&' : '?';
                 finalEndpoint = `${endpoint}${separator}_t=${Date.now()}`;
             }
             
-            const response = await fetch(`${API_BASE_URL}${finalEndpoint}`, mergedOptions);
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: { message: 'An unknown error occurred' } }));
-                const errorMessage = errorData.error?.message || `HTTP error! status: ${response.status}`;
-                showNotification(errorMessage, 'error');
-                throw new Error(errorMessage);
-            }
-            return response;
-        }
-
-        async function refreshAllData() {
             try {
-                await Promise.all([
-                    fetchEnhancedStats(),
-                    fetchLeads()
-                ]);
+                const response = await fetch(`${API_BASE_URL}${finalEndpoint}`, mergedOptions);
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: { message: 'An unknown error occurred' } }));
+                    throw new Error(errorData.error.message || `HTTP error! status: ${response.status}`);
+                }
+                return response;
             } catch (error) {
-                console.error('Data refresh failed:', error);
+                console.error('API call failed:', error);
+                showNotification(error.message, 'error');
+                throw error;
             }
         }
-
+        
+        // Enhanced fetchLeads function
         async function fetchLeads() {
-            let endpoint = `/api/leads?status=${currentView}&search=${currentSearchTerm}&page=${currentPage}&per_page=${leadsPerPage}`;
-            if (currentView === 'disputed') {
-                endpoint = `/api/disputes?page=${currentPage}&per_page=${leadsPerPage}`;
-            } else if (currentValidationFilter) {
-                endpoint += `&validation_result=${currentValidationFilter}`;
-            }
-
             try {
-                const response = await apiFetch(endpoint);
-                const data = await response.json();
-                paginationInfo = data.pagination;
+                console.log('Fetching leads for view:', currentView);
+                
+                let endpoint = `/api/leads?status=${currentView}&search=${currentSearchTerm}&page=${currentPage}&per_page=${leadsPerPage}`;
+                
+                if (currentValidationFilter) {
+                    endpoint += `&validation_result=${currentValidationFilter}`;
+                }
 
                 if (currentView === 'disputed') {
-                    allLeads = data.data.map(item => item.lead);
-                    renderDisputedLeads(data.data);
+                    endpoint = `/api/disputes?page=${currentPage}&per_page=${leadsPerPage}`;
+                    const response = await apiFetch(endpoint);
+                    const data = await response.json();
+                    const leadsData = Array.isArray(data.data) ? data.data : []; // FIX
+                    allLeads = leadsData.map(item => item.lead);
+                    paginationInfo = data.pagination;
+                    renderDisputedLeads(leadsData);
                 } else {
-                    allLeads = data.data;
+                    const response = await apiFetch(endpoint);
+                    const data = await response.json();
+                    allLeads = Array.isArray(data.data) ? data.data : []; // FIX
+                    paginationInfo = data.pagination;
                     renderLeads();
                 }
+                
                 updateButtons();
+                // Only update table headers if not already initialized
+                if (!isInitialized) {
+                    updateTableHeaders();
+                }
+                console.log('Leads fetched successfully:', allLeads.length, 'leads');
             } catch (error) {
                 console.error('Failed to fetch leads:', error);
-                document.getElementById('leadsTableBody').innerHTML = '';
+                showNotification('Failed to load leads. Please try again.', 'error');
             }
         }
-
+        
+        // Enhanced fetchEnhancedStats function
         async function fetchEnhancedStats() {
             try {
+                console.log('Fetching enhanced stats...');
                 const response = await apiFetch('/api/leads/stats');
                 enhancedStats = await response.json();
                 updateTabCounts();
                 updateStatsDisplay();
+                console.log('Stats fetched successfully');
             } catch (error) {
-                console.error('Failed to fetch stats:', error);
+                console.error('Failed to fetch enhanced stats:', error);
+                showNotification('Failed to load statistics.', 'warning');
             }
-        }
-
-        function renderLeads() {
-            const tbody = document.getElementById('leadsTableBody');
-            const emptyState = document.getElementById('emptyState');
-            
-            if (!allLeads || allLeads.length === 0) {
-                tbody.innerHTML = '';
-                emptyState.style.display = 'block';
-                return;
-            }
-
-            emptyState.style.display = 'none';
-            tbody.innerHTML = allLeads.map(lead => `
-                <tr data-lead-id="${lead.id}">
-                    <td><input type="checkbox" ${selectedLeads.has(lead.id) ? 'checked' : ''} onchange="toggleLead(${lead.id})"></td>
-                    <td>${lead.name}</td>
-                    <td>${lead.email}</td>
-                    <td><span class="status-badge status-${lead.status}">${lead.status}</span></td>
-                    <td>${lead.company || '-'}</td>
-                    <td class="actions-cell">
-                        ${(!lead.validation || lead.validation.result === 'unknown') ? `<button class="btn btn-secondary btn-sm" onclick="validateSingleEmail(${lead.id}, this)">Check</button>` : buildValidationBadge(lead.validation)}
-                        <button class="btn btn-danger btn-sm" onclick="deleteLead(${lead.id})">Delete</button>
-                    </td>
-                </tr>
-            `).join('');
-            renderPagination();
-            updateSelectAllCheckbox();
-        }
-
-        function renderDisputedLeads(leadsWithDetails) {
-            const tbody = document.getElementById('leadsTableBody');
-            const emptyState = document.getElementById('emptyState');
-            
-            if (!leadsWithDetails || leadsWithDetails.length === 0) {
-                tbody.innerHTML = '';
-                emptyState.style.display = 'block';
-                return;
-            }
-
-            emptyState.style.display = 'none';
-            tbody.innerHTML = leadsWithDetails.map(item => {
-                const lead = item.lead;
-                const conflicts = item.conflicts || [];
-                const validations = item.validations || [];
-                const latestValidation = validations[0];
-
-                return `
-                    <tr data-lead-id="${lead.id}">
-                        <td><input type="checkbox" ${selectedLeads.has(lead.id) ? 'checked' : ''} onchange="toggleLead(${lead.id})"></td>
-                        <td>
-                            <div><strong>${lead.name}</strong></div>
-                            <div style="color: #718096; font-size: 14px;">${lead.email}</div>
-                        </td>
-                        <td>
-                            <div class="conflict-indicators">${conflicts.map(c => `<div class="conflict-badge conflict-${c.conflict_type.replace(/_/g, '-')}">${c.conflict_type.replace(/_/g, ' ')}</div>`).join('')}</div>
-                        </td>
-                        <td>${buildValidationBadge(latestValidation)}</td>
-                        <td>
-                            <div class="dispute-actions">
-                                <button class="btn btn-success btn-sm" onclick="resolveIndividualDispute(${lead.id}, 'accept')">Accept</button>
-                                <button class="btn btn-danger btn-sm" onclick="resolveIndividualDispute(${lead.id}, 'discard')">Discard</button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-            renderPagination();
-            updateSelectAllCheckbox();
-        }
-
-        function buildValidationBadge(validation) {
-            if (!validation) return '<div class="validation-indicator validation-unknown">Not Validated</div>';
-
-            let validationBadge = `<div class="validation-indicator validation-${validation.result}">${validation.result}</div>`;
-            let serviceBadge = '';
-
-            if (validation.service) {
-                const serviceClass = validation.service.toLowerCase().includes('quick') ? 'service-quickemail' : 'service-myemailverifier';
-                serviceBadge = `<div class="service-indicator ${serviceClass}" title="${validation.details}">${validation.service.replace('Verification','')}</div>`;
-            }
-            if (validation.credit_status === 'fallback_used') {
-                serviceBadge += '<div class="service-indicator service-fallback">Fallback</div>';
-            } else if (validation.credit_status === 'no_credits') {
-                serviceBadge += '<div class="service-indicator service-no-credits">No Credits</div>';
-            }
-            return `<div class="validation-details">${validationBadge}${serviceBadge}</div>`;
         }
 
         function updateTabCounts() {
             if (enhancedStats) {
-                document.getElementById('newCount').textContent = enhancedStats.new_leads || 0;
-                document.getElementById('contactedCount').textContent = enhancedStats.contacted_leads || 0;
-                document.getElementById('pendingCount').textContent = enhancedStats.pending_leads || 0;
-                document.getElementById('disputedCount').textContent = enhancedStats.disputed_leads || 0;
-                document.getElementById('disputeBadge').style.display = (enhancedStats.disputed_leads > 0) ? 'block' : 'none';
+                document.getElementById('newCount').textContent = enhancedStats.new_leads;
+                document.getElementById('contactedCount').textContent = enhancedStats.contacted_leads;
+                document.getElementById('disputedCount').textContent = enhancedStats.disputed_leads;
+                
+                const disputeBadge = document.getElementById('disputeBadge');
+                if (enhancedStats.disputed_leads > 0) {
+                    disputeBadge.style.display = 'block';
+                } else {
+                    disputeBadge.style.display = 'none';
+                }
             }
         }
 
@@ -1185,11 +1223,53 @@
             if (currentView === 'disputed' && enhancedStats) {
                 statsGrid.style.display = 'grid';
                 validationServiceInfo.style.display = 'block';
+                
+                // Enhanced stats with validation service information
                 statsGrid.innerHTML = `
-                    <div class="stat-card"><div class="stat-number">${enhancedStats.dispute_stats.total_disputed}</div><div class="stat-label">Total Disputed</div></div>
-                    <div class="stat-card"><div class="stat-number">${enhancedStats.validation_stats.valid_emails}</div><div class="stat-label">Valid</div></div>
-                    <div class="stat-card"><div class="stat-number">${enhancedStats.validation_stats.invalid_emails}</div><div class="stat-label">Invalid</div></div>
-                    <div class="stat-card"><div class="stat-number">${enhancedStats.validation_stats.unknown_emails}</div><div class="stat-label">Unknown</div></div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #d69e2e;">${enhancedStats.dispute_stats.total_disputed}</div>
+                        <div class="stat-label">Total Disputed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #ed8936;">${enhancedStats.dispute_stats.same_domain_conflicts}</div>
+                        <div class="stat-label">Same Domain</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #4338ca;">${enhancedStats.dispute_stats.contacted_domain_conflicts}</div>
+                        <div class="stat-label">Contacted Domain</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #e53e3e;">${enhancedStats.dispute_stats.duplicate_email_conflicts}</div>
+                        <div class="stat-label">Duplicate Email</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #d53f8c;">${enhancedStats.dispute_stats.similar_name_conflicts}</div>
+                        <div class="stat-label">Similar Name</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #38a169;">${enhancedStats.validation_stats.valid_emails}</div>
+                        <div class="stat-label">Valid Emails</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #e53e3e;">${enhancedStats.validation_stats.invalid_emails}</div>
+                        <div class="stat-label">Invalid Emails</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #2b8a3e;">${enhancedStats.validation_stats.quickemail_used || 0}</div>
+                        <div class="stat-label">QuickEmail Used</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #d69e2e;">${enhancedStats.validation_stats.myemailverifier_used || 0}</div>
+                        <div class="stat-label">MyEmailVerifier Used</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #dc2626;">${enhancedStats.validation_stats.fallbacks_used || 0}</div>
+                        <div class="stat-label">Fallbacks Used</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #991b1b;">${enhancedStats.validation_stats.no_credits_failures || 0}</div>
+                        <div class="stat-label">Credit Failures</div>
+                    </div>
                 `;
             } else {
                 statsGrid.style.display = 'none';
@@ -1197,268 +1277,897 @@
             }
         }
 
+        function updateTableHeaders() {
+            const tableHeader = document.getElementById('tableHeader');
+            if (currentView === 'disputed') {
+                tableHeader.innerHTML = `
+                    <tr>
+                        <th width="50">
+                            <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                        </th>
+                        <th>Lead Details</th>
+                        <th>Conflicts</th>
+                        <th>Validation & Service</th>
+                        <th>Actions</th>
+                    </tr>
+                `;
+            } else {
+                tableHeader.innerHTML = `
+                    <tr>
+                        <th width="50">
+                            <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                        </th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Status</th>
+                        <th>Company</th>
+                        <th>Actions</th>
+                    </tr>
+                `;
+            }
+        }
+
+        function buildValidationBadge(validation) {
+            if (!validation) return '';
+
+            let validationBadge = `<div class="validation-indicator validation-${validation.result}">${validation.result}</div>`;
+            let serviceBadge = '';
+
+            if (validation.service) {
+                const serviceClass = validation.service === 'QuickEmailVerification' ? 'service-quickemail' :
+                                validation.service === 'MyEmailVerifier' ? 'service-myemailverifier' : 'service-fallback';
+                serviceBadge = `<div class="service-indicator ${serviceClass}" title="${validation.details}">${validation.service.replace('Verification','')}</div>`;
+            }
+            if (validation.credit_status) {
+                if (validation.credit_status === 'fallback_used') {
+                    serviceBadge += '<div class="service-indicator service-fallback">Fallback</div>';
+                } else if (validation.credit_status === 'no_credits') {
+                    serviceBadge += '<div class="service-indicator service-no-credits">No Credits</div>';
+                }
+            }
+            return `<div class="validation-details">${validationBadge}${serviceBadge}</div>`;
+        }
+
+        async function validateSingleEmail(leadId, btn) {
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="loading-small"></span>';
+            btn.disabled = true;
+
+            try {
+                await apiFetch(`/api/leads/${leadId}/validate`, { method: 'POST' });
+                showNotification(`Validation triggered for lead ${leadId}. Refreshing...`, 'success');
+                // A simple refresh is the most reliable way to update the UI
+                await fetchLeads();
+            } catch (error) {
+                showNotification(`Validation failed: ${error.message}`, 'error');
+                // Restore button only on failure
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+        
+        // Enhanced switchView function
         function switchView(view) {
+            console.log('Switching to view:', view);
+            
             currentView = view;
             currentPage = 1;
             currentSearchTerm = '';
             currentValidationFilter = '';
-            selectedLeads.clear();
-            document.getElementById('searchInput').value = '';
             
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.getElementById(`${view}Tab`).classList.add('active');
-
-            const commonControls = ['exportBtn'];
-            const viewControls = {
-                new: ['sendEmailBtn', 'sendZapierBtn', 'markContactedBtn'],
-                contacted: ['markContactedBtn'],
-                pending: [],
-                disputed: ['disputeActions', 'validationFilter']
-            };
-
-            document.querySelectorAll('.controls .btn, .controls div[id$="Actions"], .controls select').forEach(el => {
-                el.style.display = 'none';
-            });
-            commonControls.forEach(id => { document.getElementById(id).style.display = 'inline-flex'; });
-            viewControls[view].forEach(id => {
-                const el = document.getElementById(id);
-                el.style.display = id.includes('Actions') ? 'flex' : 'inline-flex';
-            });
-
+            // Clear search input
+            document.getElementById('searchInput').value = '';
+            document.getElementById('validationFilter').value = '';
+            
+            // Clear cached data to force fresh fetch
+            clearCachedData();
+            
+            // Update active tab
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.getElementById(view + 'Tab').classList.add('active');
+            
+            // Show/hide view-specific controls
+            const disputeActions = document.getElementById('disputeActions');
+            const validationFilter = document.getElementById('validationFilter');
+            const sendEmailBtn = document.getElementById('sendEmailBtn');
+            const sendZapierBtn = document.getElementById('sendZapierBtn');
+            
+            if (view === 'disputed') {
+                disputeActions.style.display = 'flex';
+                validationFilter.style.display = 'block';
+                sendEmailBtn.style.display = 'none';
+                sendZapierBtn.style.display = 'none';
+            } else {
+                disputeActions.style.display = 'none';
+                validationFilter.style.display = 'none';
+                sendEmailBtn.style.display = view === 'new' ? 'inline-flex' : 'none';
+                sendZapierBtn.style.display = view === 'new' ? 'inline-flex' : 'none';
+            }
+            
+            // Update table headers for the new view
             updateTableHeaders();
             updateStatsDisplay();
+            
+            // Fetch fresh data
             refreshAllData();
         }
 
-        function updateTableHeaders() {
-            const header = document.getElementById('tableHeader');
-            if (currentView === 'disputed') {
-                header.innerHTML = `<tr><th><input type="checkbox" onchange="toggleSelectAll(this.checked)"></th><th>Lead</th><th>Conflicts</th><th>Validation</th><th>Actions</th></tr>`;
-            } else {
-                header.innerHTML = `<tr><th><input type="checkbox" onchange="toggleSelectAll(this.checked)"></th><th>Name</th><th>Email</th><th>Status</th><th>Company</th><th>Actions</th></tr>`;
-            }
+        function handleSearch(event) {
+            currentSearchTerm = event.target.value;
+            currentPage = 1;
+            fetchLeads();
         }
-        
-        // Corrected sendToZapier function
-        async function sendToZapier() {
-            const interval = parseInt(document.getElementById('intervalSeconds').value);
-            if (!interval || interval < 1) {
-                showNotification('Please enter a valid interval.', 'error');
-                return;
-            }
-            if (selectedLeads.size === 0) {
-                showNotification('Please select leads to send.', 'error');
+
+        function handleFilterChange() {
+            currentValidationFilter = document.getElementById('validationFilter').value;
+            currentPage = 1;
+            fetchLeads();
+        }
+
+        function renderLeads() {
+            const tbody = document.getElementById('leadsTableBody');
+            const emptyState = document.getElementById('emptyState');
+            const table = document.querySelector('.table-container table');
+            const paginationEl = document.getElementById('pagination');
+
+            if (allLeads.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.style.display = 'block';
+                table.style.display = 'none';
+                paginationEl.style.display = 'none';
+
+                const emptyTitle = emptyState.querySelector('h3');
+                const emptyText = emptyState.querySelector('p');
+                emptyTitle.textContent = 'No leads found';
+                emptyText.textContent = currentSearchTerm ? `No results for "${currentSearchTerm}"` : `No ${currentView} leads. Try importing some!`;
+
                 return;
             }
 
-            const btn = document.querySelector('#zapierModal .btn-zapier');
-            setButtonLoading(btn, true);
+            emptyState.style.display = 'none';
+            table.style.display = 'table';
+            paginationEl.style.display = 'flex';
+
+            tbody.innerHTML = allLeads.map(lead => `
+        <tr>
+            <td>
+                <input type="checkbox" 
+                       ${selectedLeads.has(lead.id) ? 'checked' : ''}
+                       onchange="toggleLead(${lead.id})">
+            </td>
+            <td>${lead.name}</td>
+            <td>${lead.email}</td>
+            <td>
+                <span class="status-badge status-${lead.status}">
+                    ${lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
+                </span>
+            </td>
+            <td>${lead.company || '-'}</td>
+            <td class="actions-cell">
+                ${
+                    (!lead.validation || lead.validation.result === 'unknown')
+                    ? `<button class="btn btn-secondary btn-sm" onclick="validateSingleEmail(${lead.id}, this)">Check</button>`
+                    : buildValidationBadge(lead.validation)
+                }
+                <button class="btn btn-danger btn-sm" onclick="deleteLead(${lead.id})">Delete</button>
+            </td>
+        </tr>
+    `).join('');
+
+    renderPagination();
+    updateSelectAllCheckbox();
+}
+
+        async function deleteLead(leadId) {
+            if (!confirm(`Are you sure you want to delete lead ${leadId}? This action cannot be undone.`)) {
+                return;
+            }
 
             try {
-                // The backend now handles setting the status to 'pending'.
-                // We no longer need to make a separate bulk-update call from the frontend.
-                const response = await apiFetch('/api/email/send-to-zapier', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        lead_ids: Array.from(selectedLeads),
-                        interval_seconds: interval,
-                    }),
+                await performOperation('deleteLead', async () => {
+                    await apiFetch(`/api/leads/${leadId}`, { method: 'DELETE' });
+                    showNotification(`Lead ${leadId} has been successfully deleted.`, 'success');
                 });
-                const result = await response.json();
-                showNotification(result.message, 'success');
-                
-                selectedLeads.clear();
-                closeModal('zapierModal');
-                
-                // Switch to the pending view to show the user the result of their action
-                switchView('pending');
-                
             } catch (error) {
-                console.error('Failed to send to Zapier:', error);
-                // If the main call fails, refresh data to show the real state
-                await refreshAllData();
-            } finally {
-                setButtonLoading(btn, false);
+                console.error(`Failed to delete lead ${leadId}:`, error);
+                showNotification(`Error deleting lead: ${error.message}`, 'error');
             }
         }
 
+        function renderDisputedLeads(leadsWithDetails) {
+            const tbody = document.getElementById('leadsTableBody');
+            const emptyState = document.getElementById('emptyState');
+            const table = document.querySelector('.table-container table');
+            const paginationEl = document.getElementById('pagination');
 
-        function debounce(func, delay) {
-            let timeout;
-            return (...args) => {
-                clearTimeout(timeout);
-                timeout = setTimeout(() => func.apply(this, args), delay);
-            };
-        }
+            if (leadsWithDetails.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.style.display = 'block';
+                table.style.display = 'none';
+                paginationEl.style.display = 'none';
+                
+                const emptyTitle = emptyState.querySelector('h3');
+                const emptyText = emptyState.querySelector('p');
+                emptyTitle.textContent = 'No disputed leads found';
+                emptyText.textContent = 'All conflicts have been resolved!';
+                
+                return;
+            }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('searchInput').addEventListener('input', debounce(e => {
-                currentSearchTerm = e.target.value;
-                currentPage = 1;
-                fetchLeads();
-            }, 300));
+            emptyState.style.display = 'none';
+            table.style.display = 'table';
+            paginationEl.style.display = 'flex';
 
-            document.getElementById('intervalSeconds').addEventListener('input', updateEstimatedTime);
-            
-            // Auto-refresh data every 30 seconds
-            setInterval(refreshAllData, 30000);
-            
-            // Initial load
-            switchView('new');
-        });
+            tbody.innerHTML = leadsWithDetails.map(item => {
+                const lead = item.lead;
+                const conflicts = item.conflicts || [];
+                const validations = item.validations || [];
+                
+                const conflictBadges = conflicts.map(conflict => 
+                    `<div class="conflict-badge conflict-${conflict.conflict_type.replace('_', '-')}">${conflict.conflict_type.replace('_', ' ')}</div>`
+                ).join('');
+                
+                const latestValidation = validations[0];
+                let validationBadge = '<div class="validation-indicator validation-unknown">Not Validated</div>';
+                let serviceBadge = '';
+                
+                if (latestValidation) {
+                    validationBadge = `<div class="validation-indicator validation-${latestValidation.result}">${latestValidation.result}</div>`;
+                    
+                    // Add service indicator
+                    if (latestValidation.service) {
+                        const serviceClass = latestValidation.service === 'QuickEmailVerification' ? 'service-quickemail' : 
+                                           latestValidation.service === 'MyEmailVerifier' ? 'service-myemailverifier' : 'service-fallback';
+                        serviceBadge = `<div class="service-indicator ${serviceClass}">${latestValidation.service}</div>`;
+                    }
+                    
+                    // Add credit status indicator
+                    if (latestValidation.credit_status) {
+                        if (latestValidation.credit_status === 'fallback_used') {
+                            serviceBadge += '<div class="service-indicator service-fallback">Fallback Used</div>';
+                        } else if (latestValidation.credit_status === 'no_credits') {
+                            serviceBadge += '<div class="service-indicator service-no-credits">No Credits</div>';
+                        }
+                    }
+                }
 
-        // Simplified utility functions
-        const show = id => document.getElementById(id).style.display = 'block';
-        const hide = id => document.getElementById(id).style.display = 'none';
-        const openModal = id => show(id);
-        const closeModal = id => hide(id);
-        const triggerFileUpload = () => openModal('importModal');
+                const conflictDetails = conflicts.map(conflict => 
+                    `<div class="conflict-item"><strong>${conflict.conflict_type.replace('_', ' ')}:</strong> ${conflict.conflict_details}</div>`
+                ).join('');
 
-        function setButtonLoading(btn, isLoading) {
-            const textSpan = btn.querySelector('span:not(.loading)');
-            const loadingSpan = btn.querySelector('.loading');
-            btn.disabled = isLoading;
-            if (textSpan) textSpan.style.display = isLoading ? 'none' : 'inline';
-            if (loadingSpan) loadingSpan.style.display = isLoading ? 'inline-block' : 'none';
-        }
-        
-        function showNotification(message, type) {
-            const container = document.body;
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.textContent = message;
-            container.appendChild(notification);
-            setTimeout(() => notification.classList.add('show'), 10);
-            setTimeout(() => {
-                notification.classList.remove('show');
-                setTimeout(() => notification.remove(), 500);
-            }, 5000);
-        }
+                return `
+                    <tr>
+                        <td>
+                            <input type="checkbox" 
+                                   ${selectedLeads.has(lead.id) ? 'checked' : ''}
+                                   onchange="toggleLead(${lead.id})">
+                        </td>
+                        <td>
+                            <div><strong>${lead.name}</strong></div>
+                            <div style="color: #718096; font-size: 14px;">${lead.email}</div>
+                            <div style="color: #718096; font-size: 12px; margin-top: 5px;">
+                                Company: ${lead.company || 'Not specified'}
+                            </div>
+                        </td>
+                        <td>
+                            <div class="conflict-indicators">${conflictBadges}</div>
+                            ${conflicts.length > 0 ? `
+                                <div class="conflict-details">
+                                    <h4>Conflict Details:</h4>
+                                    ${conflictDetails}
+                                </div>
+                            ` : ''}
+                        </td>
+                        <td>
+                            ${validationBadge}
+                            ${serviceBadge}
+                            ${latestValidation && latestValidation.details ? `
+                                <div style="font-size: 12px; color: #718096; margin-top: 5px;">
+                                    ${latestValidation.details}
+                                </div>
+                            ` : ''}
+                        </td>
+                        <td>
+                            <div class="dispute-actions">
+                                <button class="btn btn-success" onclick="resolveIndividualDispute(${lead.id}, 'accept')">
+                                    Accept
+                                </button>
+                                <button class="btn btn-danger" onclick="resolveIndividualDispute(${lead.id}, 'discard')">
+                                    Discard
+                                </button>
+                                <button class="btn btn-warning" onclick="resolveIndividualDispute(${lead.id}, 'mark_contacted')">
+                                    Mark Contacted
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
 
-        function toggleLead(leadId) {
-            if (selectedLeads.has(leadId)) selectedLeads.delete(leadId);
-            else selectedLeads.add(leadId);
-            updateButtons();
+            renderPagination();
             updateSelectAllCheckbox();
         }
 
-        function toggleSelectAll(checked) {
-            const checkboxes = document.querySelectorAll('#leadsTableBody input[type="checkbox"]');
-            if (checked) {
-                allLeads.forEach(lead => selectedLeads.add(lead.id));
-                checkboxes.forEach(cb => cb.checked = true);
-            } else {
-                selectedLeads.clear();
-                checkboxes.forEach(cb => cb.checked = false);
-            }
-            updateButtons();
-        }
-
-        function updateSelectAllCheckbox() {
-            const selectAll = document.querySelector('#tableHeader input[type="checkbox"]');
-            if (!selectAll) return;
-            const displayedLeadIds = new Set(allLeads.map(l => l.id));
-            const selectedOnPage = [...selectedLeads].filter(id => displayedLeadIds.has(id));
-
-            if (selectedOnPage.length === 0 || displayedLeadIds.size === 0) {
-                selectAll.checked = false;
-                selectAll.indeterminate = false;
-            } else if (selectedOnPage.length === displayedLeadIds.size) {
-                selectAll.checked = true;
-                selectAll.indeterminate = false;
-            } else {
-                selectAll.checked = false;
-                selectAll.indeterminate = true;
-            }
-        }
-        
-        function updateButtons() {
-            const hasSelection = selectedLeads.size > 0;
-            document.querySelectorAll('.btn[id$="Btn"]').forEach(btn => {
-                if(btn.id !== 'exportBtn' && btn.id !== 'analyzeConflictsBtn' && btn.id !== 'validateEmailsBtn') {
-                    btn.disabled = !hasSelection;
-                }
-            });
-            document.getElementById('exportBtn').disabled = allLeads.length === 0;
-        }
-
         function renderPagination() {
-            const el = document.getElementById('pagination');
+            const pagination = document.getElementById('pagination');
             const { current_page, total_pages } = paginationInfo;
+            
             if (total_pages <= 1) {
-                el.innerHTML = '';
+                pagination.innerHTML = '';
                 return;
             }
-            let html = '';
-            if (current_page > 1) html += `<button class="page-btn" onclick="changePage(${current_page - 1})">‹ Prev</button>`;
-            for (let i = Math.max(1, current_page - 2); i <= Math.min(total_pages, current_page + 2); i++) {
-                html += `<button class="page-btn ${i === current_page ? 'active' : ''}" onclick="changePage(${i})">${i}</button>`;
+
+            let paginationHTML = '';
+            
+            if (current_page > 1) {
+                paginationHTML += `<button class="page-btn" onclick="changePage(${current_page - 1})">‹ Previous</button>`;
             }
-            if (current_page < total_pages) html += `<button class="page-btn" onclick="changePage(${current_page + 1})">Next ›</button>`;
-            el.innerHTML = html;
+
+            const startPage = Math.max(1, current_page - 2);
+            const endPage = Math.min(total_pages, current_page + 2);
+
+            for (let i = startPage; i <= endPage; i++) {
+                paginationHTML += `<button class="page-btn ${i === current_page ? 'active' : ''}" onclick="changePage(${i})">${i}</button>`;
+            }
+
+            if (current_page < total_pages) {
+                paginationHTML += `<button class="page-btn" onclick="changePage(${current_page + 1})">Next ›</button>`;
+            }
+
+            pagination.innerHTML = paginationHTML;
         }
 
         function changePage(page) {
             currentPage = page;
             fetchLeads();
         }
-        
-        function updateEstimatedTime() {
-            const interval = parseInt(document.getElementById('intervalSeconds').value) || 10;
-            const count = selectedLeads.size;
-            const seconds = (count > 1 ? (count - 1) * interval : 0);
-            document.getElementById('estimatedTimeText').textContent = `${Math.floor(seconds / 60)}m ${seconds % 60}s for ${count} leads`;
-        }
-        
-        async function startImport() {
-            const file = document.getElementById('csvFile').files[0];
-            if (!file) return showNotification('Please select a file.', 'error');
-            
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('enable_validation', document.getElementById('enableValidation').checked);
-            formData.append('enable_conflict_detection', document.getElementById('enableConflictDetection').checked);
-            formData.append('auto_mark_disputed', document.getElementById('autoMarkDisputed').checked);
 
-            const btn = document.querySelector('#importModal .btn-primary');
+        function toggleLead(leadId) {
+            if (selectedLeads.has(leadId)) {
+                selectedLeads.delete(leadId);
+            } else {
+                selectedLeads.add(leadId);
+            }
+            updateButtons();
+            updateSelectAllCheckbox();
+        }
+
+        async function toggleSelectAll() {
+            const selectAllCheckbox = document.getElementById('selectAll');
+            if (selectAllCheckbox.checked) {
+                allLeads.forEach(lead => selectedLeads.add(lead.id));
+            } else {
+                selectedLeads.clear();
+            }
+            
+            // Re-render to update checkboxes
+            if (currentView === 'disputed') {
+                // Need to fetch disputes again to get proper render
+                await fetchLeads();
+            } else {
+                renderLeads();
+            }
+            updateButtons();
+        }
+
+        function updateSelectAllCheckbox() {
+            const selectAllCheckbox = document.getElementById('selectAll');
+            // Add null check to prevent errors
+            if (!selectAllCheckbox) {
+                console.warn('selectAll checkbox not found');
+                return;
+            }
+            
+            if (allLeads.length === 0) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+                return;
+            }
+            const selectedCount = allLeads.filter(lead => selectedLeads.has(lead.id)).length;
+            if (selectedCount === 0) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            } else if (selectedCount === allLeads.length) {
+                selectAllCheckbox.checked = true;
+                selectAllCheckbox.indeterminate = false;
+            } else {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = true;
+            }
+        }
+
+        function updateButtons() {
+            const sendEmailBtn = document.getElementById('sendEmailBtn');
+            const sendZapierBtn = document.getElementById('sendZapierBtn');
+            const exportBtn = document.getElementById('exportBtn');
+            const markContactedBtn = document.getElementById('markContactedBtn');
+            const bulkAcceptBtn = document.getElementById('bulkAcceptBtn');
+            const bulkDiscardBtn = document.getElementById('bulkDiscardBtn');
+
+            const hasSelected = selectedLeads.size > 0;
+            const hasLeads = allLeads.length > 0;
+
+            markContactedBtn.disabled = !hasSelected;
+            exportBtn.disabled = !hasLeads;
+
+            if (currentView === 'disputed') {
+                if (bulkAcceptBtn) bulkAcceptBtn.disabled = !hasSelected;
+                if (bulkDiscardBtn) bulkDiscardBtn.disabled = !hasSelected;
+            } else {
+                sendEmailBtn.disabled = !hasSelected;
+                sendZapierBtn.disabled = !hasSelected;
+            }
+        }
+
+        // ================== ENHANCED OPERATION FUNCTIONS ==================
+
+        // Enhanced markAsContacted function
+        async function markAsContacted() {
+            if (selectedLeads.size === 0) return;
+
+            await performOperation('markAsContacted', async () => {
+                await apiFetch('/api/leads/bulk-update', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        lead_ids: Array.from(selectedLeads),
+                        status: 'contacted'
+                    }),
+                });
+                
+                showNotification(`${selectedLeads.size} leads marked as contacted`, 'success');
+                selectedLeads.clear();
+            });
+        }
+
+        // Enhanced dispute resolution functions
+        async function resolveIndividualDispute(leadId, action) {
+            await performOperation(`resolveIndividualDispute-${action}`, async () => {
+                const response = await apiFetch(`/api/disputes/${leadId}/resolve`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        resolution: action,
+                        notes: `Resolved via individual action: ${action}`
+                    }),
+                });
+                
+                const result = await response.json();
+                showNotification(`Dispute resolved: ${result.status}`, 'success');
+            });
+        }
+
+        function openBulkResolveModal(action) {
+            if (selectedLeads.size === 0) {
+                showNotification('Please select leads to resolve.', 'error');
+                return;
+            }
+
+            currentDisputeAction = action;
+            const modal = document.getElementById('bulkResolveModal');
+            const title = document.getElementById('bulkResolveTitle');
+            const description = document.getElementById('bulkResolveDescription');
+
+            const actionText = {
+                'accept': 'Accept as New Leads',
+                'discard': 'Discard',
+                'mark_contacted': 'Mark as Contacted'
+            };
+
+            title.textContent = `Bulk ${actionText[action]}`;
+            description.textContent = `Are you sure you want to ${actionText[action].toLowerCase()} ${selectedLeads.size} disputed lead(s)?`;
+
+            modal.style.display = 'block';
+        }
+
+        function closeBulkResolveModal() {
+            document.getElementById('bulkResolveModal').style.display = 'none';
+            document.getElementById('bulkResolutionNotes').value = '';
+        }
+
+        // Enhanced confirmBulkResolve function
+        async function confirmBulkResolve() {
+            const notes = document.getElementById('bulkResolutionNotes').value;
+            const btn = document.querySelector('#bulkResolveModal .btn-primary');
+            
             setButtonLoading(btn, true);
 
             try {
-                const res = await apiFetch('/api/leads/import', { method: 'POST', body: formData });
-                const result = await res.json();
-                closeModal('importModal');
-                showNotification(`Import job #${result.job_id} started.`, 'success');
-                pollJobStatus(result.job_id);
-            } catch (e) {
-                console.error(e);
+                await performOperation('confirmBulkResolve', async () => {
+                    const response = await apiFetch('/api/disputes/bulk-resolve', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            lead_ids: Array.from(selectedLeads),
+                            resolution: currentDisputeAction,
+                            notes: notes || `Bulk resolution: ${currentDisputeAction}`
+                        }),
+                    });
+                    
+                    const result = await response.json();
+                    showNotification(`Bulk resolution completed: ${result.resolved_count} disputes resolved`, 'success');
+                    
+                    if (result.errors && result.errors.length > 0) {
+                        showNotification(`Some errors occurred: ${result.errors.length} failed`, 'warning');
+                    }
+                    
+                    selectedLeads.clear();
+                    closeBulkResolveModal();
+                });
             } finally {
                 setButtonLoading(btn, false);
             }
         }
 
+        // Enhanced analyzeConflicts function
+        async function analyzeConflicts() {
+            const btn = document.getElementById('analyzeConflictsBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="loading"></span> Analyzing...';
+            btn.disabled = true;
+
+            try {
+                await performOperation('analyzeConflicts', async () => {
+                    const response = await apiFetch('/api/disputes/analyze', { method: 'POST' });
+                    const result = await response.json();
+                    
+                    showNotification(
+                        `Analysis complete: ${result.conflicts_detected} conflicts detected, ${result.leads_marked_disputed} leads marked as disputed`,
+                        'success'
+                    );
+                    
+                    if (result.conflict_types && result.conflict_types.length > 0) {
+                        const details = result.conflict_types.map(ct => `${ct.count} ${ct.conflict_type}`).join(', ');
+                        showNotification(`Conflict types: ${details}`, 'warning');
+                    }
+                });
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        // Enhanced validateAllEmails function
+        async function validateAllEmails() {
+            const btn = document.getElementById('validateEmailsBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="loading"></span> Validating...';
+            btn.disabled = true;
+
+            try {
+                await performOperation('validateAllEmails', async () => {
+                    const response = await apiFetch('/api/disputes/validate-emails', { method: 'POST' });
+                    const result = await response.json();
+                    
+                    showNotification(
+                        `Email validation complete: ${result.validations_performed} emails processed`,
+                        'success'
+                    );
+                    
+                    // Enhanced notification with service usage details
+                    if (result.quickemail_validations || result.myemailverifier_validations) {
+                        showNotification(
+                            `Service usage: ${result.quickemail_validations || 0} QuickEmail, ${result.myemailverifier_validations || 0} MyEmailVerifier, ${result.fallbacks_used || 0} fallbacks, ${result.credit_failures || 0} credit failures`,
+                            'warning'
+                        );
+                    }
+                });
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        // ================== IMPORT FUNCTIONALITY ==================
+
+        function triggerFileUpload() {
+            document.getElementById('importModal').style.display = 'block';
+        }
+
+        function closeImportModal() {
+            document.getElementById('importModal').style.display = 'none';
+            document.getElementById('csvFile').value = '';
+        }
+
+        async function startImport() {
+            const fileInput = document.getElementById('csvFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showNotification('Please select a CSV file.', 'error');
+                return;
+            }
+
+            const importBtn = document.querySelector('#importModal .btn-primary');
+            setButtonLoading(importBtn, true);
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('enable_validation', document.getElementById('enableValidation').checked);
+            formData.append('enable_conflict_detection', document.getElementById('enableConflictDetection').checked);
+            formData.append('auto_mark_disputed', document.getElementById('autoMarkDisputed').checked);
+            
+            try {
+                const response = await apiFetch('/api/leads/import', { method: 'POST', body: formData });
+                const result = await response.json();
+                
+                closeImportModal();
+                showNotification(`Import job #${result.job_id} started successfully!`, 'success');
+                pollJobStatus(result.job_id);
+
+            } catch (error) {
+                console.error('Import failed to start:', error);
+            } finally {
+                setButtonLoading(importBtn, false);
+            }
+        }
+
+        // Enhanced pollJobStatus with better refresh
         function pollJobStatus(jobId) {
-            show('import-progress-container');
+            const progressContainer = document.getElementById('import-progress-container');
+            const progressText = document.getElementById('import-progress-text');
+            const progressBar = document.getElementById('import-progress-bar');
+            
+            progressContainer.style.display = 'block';
+
             if (jobPollingInterval) clearInterval(jobPollingInterval);
+
             jobPollingInterval = setInterval(async () => {
                 try {
-                    const res = await apiFetch(`/api/jobs/import/${jobId}`);
-                    const job = await res.json();
-                    const progress = job.total_rows > 0 ? (job.processed_rows / job.total_rows) * 100 : 0;
-                    document.getElementById('import-progress-text').textContent = `Status: ${job.status} (${job.processed_rows}/${job.total_rows})`;
-                    document.getElementById('import-progress-bar').style.width = `${progress}%`;
+                    const response = await apiFetch(`/api/jobs/import/${jobId}`);
+                    const job = await response.json();
+
+                    // Update UI with progress
+                    const percentage = job.total_rows > 0 ? (job.processed_rows / job.total_rows) * 100 : 0;
+                    progressText.textContent = `Status: ${job.status} (${job.processed_rows} / ${job.total_rows} rows)`;
+                    progressBar.style.width = `${Math.round(percentage)}%`;
+
+                    // Check if the job is finished
                     if (job.status === 'completed' || job.status === 'failed') {
                         clearInterval(jobPollingInterval);
-                        showNotification(`Import ${job.status}: ${job.error || 'Finished successfully.'}`, job.status === 'completed' ? 'success' : 'error');
-                        setTimeout(() => hide('import-progress-container'), 5000);
-                        refreshAllData();
+                        jobPollingInterval = null;
+
+                        const finalMessage = job.status === 'completed'
+                            ? `Import job #${job.id} completed! Processed: ${job.processed_rows} rows, Conflicts: ${job.conflicts_detected}, Disputed: ${job.leads_marked_disputed}, Validated: ${job.emails_validated}`
+                            : `Import job #${job.id} failed: ${job.error}`;
+                        const finalType = job.status === 'completed' ? 'success' : 'error';
+                        showNotification(finalMessage, finalType);
+
+                        // Show enhanced statistics for completed jobs
+                        if (job.status === 'completed') {
+                            setTimeout(() => {
+                                showNotification(
+                                    `Service usage: ${job.quickemail_validations || 0} QuickEmail, ${job.myemailverifier_validations || 0} MyEmailVerifier, ${job.validation_fallbacks || 0} fallbacks, ${job.validation_credit_failures || 0} credit failures`,
+                                    'warning'
+                                );
+                            }, 2000);
+                        }
+
+                        // Hide progress bar after a few seconds and refresh data
+                        setTimeout(() => {
+                            progressContainer.style.display = 'none';
+                        }, 5000);
+                        
+                        // Use enhanced refresh with longer delay for import completion
+                        setTimeout(async () => {
+                            await refreshAllData();
+                        }, 1000);
                     }
-                } catch (e) {
+                } catch (error) {
+                    console.error('Failed to poll job status:', error);
+                    showNotification('Lost connection to import job status.', 'error');
                     clearInterval(jobPollingInterval);
-                    hide('import-progress-container');
+                    progressContainer.style.display = 'none';
                 }
             }, 2000);
         }
+        
+        function setButtonLoading(btn, isLoading) {
+            const textSpan = btn.querySelector('span:not(.loading)');
+            const loadingSpan = btn.querySelector('.loading');
+            if (isLoading) {
+                if(textSpan) textSpan.style.display = 'none';
+                if(loadingSpan) loadingSpan.style.display = 'inline-block';
+                btn.disabled = true;
+            } else {
+                if(textSpan) textSpan.style.display = 'inline';
+                if(loadingSpan) loadingSpan.style.display = 'none';
+                btn.disabled = false;
+            }
+        }
 
+        // ================== EMAIL FUNCTIONALITY ==================
+
+        function openEmailModal() {
+            document.getElementById('emailModal').style.display = 'block';
+            document.getElementById('emailSubject').focus();
+        }
+
+        function closeEmailModal() {
+            document.getElementById('emailModal').style.display = 'none';
+            document.getElementById('emailSubject').value = '';
+            document.getElementById('emailBody').value = '';
+        }
+
+        function openZapierModal() {
+            document.getElementById('zapierModal').style.display = 'block';
+            updateEstimatedTime();
+            document.getElementById('intervalSeconds').focus();
+        }
+
+        function closeZapierModal() {
+            document.getElementById('zapierModal').style.display = 'none';
+        }
+
+        function updateEstimatedTime() {
+            const interval = parseInt(document.getElementById('intervalSeconds').value) || 10;
+            const selectedCount = selectedLeads.size;
+            
+            if (selectedCount === 0) {
+                document.getElementById('estimatedTimeText').textContent = 'No leads selected';
+                return;
+            }
+
+            const totalSeconds = (selectedCount - 1) * interval;
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            
+            let timeText = '';
+            if (minutes > 0) {
+                timeText = `${minutes}m ${seconds}s`;
+            } else {
+                timeText = `${seconds}s`;
+            }
+            
+            document.getElementById('estimatedTimeText').textContent = 
+                `${timeText} for ${selectedCount} lead${selectedCount > 1 ? 's' : ''}`;
+        }
+
+        // Enhanced sendEmails function
+        async function sendEmails() {
+            const subject = document.getElementById('emailSubject').value.trim();
+            const body = document.getElementById('emailBody').value.trim();
+
+            if (!subject || !body) {
+                showNotification('Please fill in both subject and message.', 'error');
+                return;
+            }
+
+            const sendBtn = document.querySelector('#emailModal .btn-primary');
+            setButtonLoading(sendBtn, true);
+
+            try {
+                await performOperation('sendEmails', async () => {
+                    const response = await apiFetch('/api/email/send', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            lead_ids: Array.from(selectedLeads),
+                            subject,
+                            body,
+                        }),
+                    });
+                    const result = await response.json();
+                    showNotification(`Email process finished: ${result.emails_sent} sent, ${result.emails_failed} failed.`, 'success');
+                    
+                    selectedLeads.clear();
+                    closeEmailModal();
+                });
+            } finally {
+                setButtonLoading(sendBtn, false);
+            }
+        }
+
+        // Enhanced sendToZapier function
+        async function sendToZapier() {
+            const interval = parseInt(document.getElementById('intervalSeconds').value);
+
+            if (!interval || interval < 1 || interval > 300) {
+                showNotification('Please enter a valid interval between 1 and 300 seconds.', 'error');
+                return;
+            }
+
+            if (selectedLeads.size === 0) {
+                showNotification('Please select at least one lead.', 'error');
+                return;
+            }
+
+            const sendBtn = document.querySelector('#zapierModal .btn-zapier');
+            setButtonLoading(sendBtn, true);
+
+            try {
+                await performOperation('sendToZapier', async () => {
+                    const response = await apiFetch('/api/email/send-to-zapier', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            lead_ids: Array.from(selectedLeads),
+                            interval_seconds: interval,
+                        }),
+                    });
+                    const result = await response.json();
+                    showNotification(
+                        `Zapier send completed: ${result.emails_sent} sent, ${result.emails_failed} failed. Estimated completion: ${result.estimated_completion_time}`, 
+                        'success'
+                    );
+                    
+                    selectedLeads.clear();
+                    closeZapierModal();
+                });
+            } finally {
+                setButtonLoading(sendBtn, false);
+            }
+        }
+
+        async function exportLeads() {
+            try {
+                const includeDetails = currentView === 'disputed' || currentValidationFilter;
+                const endpoint = `/api/leads/export?include_details=${includeDetails}`;
+                
+                const response = await apiFetch(endpoint, { method: 'GET' });
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const contentDisposition = response.headers.get('content-disposition');
+                const filename = contentDisposition ? contentDisposition.split('filename=')[1].replace(/"/g, '') : 'leads_export.csv';
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                showNotification('Lead export started.', 'success');
+            } catch (error) {
+                console.error('Export failed:', error);
+            }
+        }
+
+        function showNotification(message, type) {
+            const existingNotifications = document.querySelectorAll('.notification');
+            existingNotifications.forEach(notif => notif.remove());
+
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => notification.classList.add('show'), 100);
+            
+            const hideTimeout = type === 'warning' ? 8000 : 6000;
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => notification.remove(), 300);
+            }, hideTimeout);
+        }
+        
+        function debounce(func, delay) {
+            let timeout;
+            return function(...args) {
+                const context = this;
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(context, args), delay);
+            };
+        }
+
+        // Legacy file upload handler for backward compatibility
+        async function handleFileUpload(event) {
+            triggerFileUpload();
+        }
+
+        // ================== AUTO-REFRESH MECHANISMS ==================
+
+        // Add automatic refresh on visibility change (when user returns to tab)
+        document.addEventListener('visibilitychange', async () => {
+            if (!document.hidden && isInitialized) {
+                console.log('Tab became visible, refreshing data...');
+                await refreshAllData();
+            }
+        });
+
+        // Add periodic refresh every 30 seconds (optional, for live updates)
+        setInterval(async () => {
+            if (!document.hidden && isInitialized) {
+                console.log('Periodic refresh...');
+                await refreshAllData();
+            }
+        }, 30000);
+
+        console.log('Enhanced frontend with MyEmailVerifier fallback system ready');
     </script>
 </body>
 </html>
