@@ -192,7 +192,7 @@ func getLeads(c *gin.Context) {
 	})
 }
 
-// FIXED: Import function that captures and uses settings
+// Import function that captures and uses settings
 func importLeads(c *gin.Context) {
 	// Capture file upload
 	file, header, err := c.Request.FormFile("file")
@@ -213,12 +213,12 @@ func importLeads(c *gin.Context) {
 		return
 	}
 
-	// FIXED: Parse import settings from form data
+	// Parse import settings from form data
 	enableValidation := c.DefaultPostForm("enable_validation", "true") == "true"
 	enableConflictDetection := c.DefaultPostForm("enable_conflict_detection", "true") == "true"
 	autoMarkDisputed := c.DefaultPostForm("auto_mark_disputed", "true") == "true"
 
-	// FIXED: Create job record with settings
+	//  Create job record with settings
 	job := ImportJob{
 		OriginalFilename:        header.Filename,
 		FilePath:                savedPath,
@@ -864,7 +864,8 @@ func sendToZapier(c *gin.Context) {
 						}
 
 						// --- Status Handling ---
-						if status == "1" { // Success!
+						switch status {
+						case "1": // Success!
 							log.Printf("SUCCESS: Zapier confirmed processing for lead %d. Updating status to 'contacted'.", currentLead.ID)
 							currentLead.Status = "contacted"
 							if err := db.Save(&currentLead).Error; err != nil {
@@ -872,13 +873,16 @@ func sendToZapier(c *gin.Context) {
 							}
 							return // Exit the polling loop on success.
 
-						} else if status == "3" { // Error reported by Zapier.
+						case "2": // Error reported by Zapier.
 							log.Printf("ERROR: Zapier reported an error for lead %d. Check Zapier logs for details.", currentLead.ID)
 							// You could potentially set a different status here, like "zapier_error".
 							return // Exit the polling loop on error.
+						case "3":
+							log.Printf("WARNING: Zapier marked lead %d as '3' (Gemini AI Failed response)", currentLead.ID)
+							// If status is "0" or anything else, just continue polling.
+							return
 
 						}
-						// If status is "0" or anything else, just continue polling.
 						log.Printf("Polling attempt %d for lead %d: Status is '%s', waiting for '1' or '3'.", attempt+1, currentLead.ID, status)
 
 						// Increase delay for next attempt.
