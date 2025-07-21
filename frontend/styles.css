@@ -281,6 +281,22 @@ td:nth-child(6) {
     display: table-cell !important;
 }
 
+/* Pending indicator styling */
+.pending-indicator {
+    font-size: 12px;
+    color: #ea580c;
+    background: #fff7ed;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid #ea580c;
+    animation: pulse-pending 2s infinite;
+}
+
+@keyframes pulse-pending {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
 .validation-details {
     font-size: 12px;
     display: block;

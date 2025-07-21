@@ -18,6 +18,10 @@
                 <button class="tab active" onclick="switchView('new')" id="newTab">
                     New Leads (<span id="newCount">0</span>)
                 </button>
+                <button class="tab" onclick="switchView('pending')" id="pendingTab">
+                    Pending (<span id="pendingCount">0</span>)
+                    <span class="tab-badge" id="pendingBadge" style="display: none;">⏳</span>
+                </button>
                 <button class="tab" onclick="switchView('contacted')" id="contactedTab">
                     Contacted Leads (<span id="contactedCount">0</span>)
                 </button>
@@ -168,7 +172,8 @@
             <div class="zapier-info">
                 <strong>⚡ Zapier Integration Info:</strong>
                 Each lead will be sent individually to: <strong>odf86lbl@robot.zapier.com</strong><br>
-                Subject: Lead ID | Body: Lead Email
+                Subject: Lead ID | Body: Lead Email<br>
+                <strong>Note:</strong> Leads will move to "Pending" status and wait for Zapier confirmation.
             </div>
             <div class="form-group">
                 <label for="intervalSeconds">Interval between emails (seconds)</label>

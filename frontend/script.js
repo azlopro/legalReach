@@ -229,6 +229,7 @@ function updateTabCounts() {
     if (enhancedStats) {
         document.getElementById('newCount').textContent = enhancedStats.new_leads;
         document.getElementById('contactedCount').textContent = enhancedStats.contacted_leads;
+        document.getElementById('pendingCount').textContent = enhancedStats.pending_leads; // ADD THIS LINE
         document.getElementById('disputedCount').textContent = enhancedStats.disputed_leads;
         
         const disputeBadge = document.getElementById('disputeBadge');
@@ -236,6 +237,14 @@ function updateTabCounts() {
             disputeBadge.style.display = 'block';
         } else {
             disputeBadge.style.display = 'none';
+        }
+        
+        // Add pending badge if there are pending leads
+        const pendingBadge = document.getElementById('pendingBadge');
+        if (enhancedStats.pending_leads > 0) {
+            pendingBadge.style.display = 'block';
+        } else {
+            pendingBadge.style.display = 'none';
         }
     }
 }
@@ -401,6 +410,13 @@ function switchView(view) {
         sendEmailBtn.style.display = 'none';
         sendZapierBtn.style.display = 'none';
         markContactedBtn.style.display = 'none';
+    } else if (view === 'pending') {
+        // For pending view, hide most actions since leads are being processed
+        disputeActions.style.display = 'none';
+        validationFilter.style.display = 'none';
+        sendEmailBtn.style.display = 'none';
+        sendZapierBtn.style.display = 'none';
+        markContactedBtn.style.display = 'none';
     } else {
         disputeActions.style.display = 'none';
         validationFilter.style.display = 'none';
@@ -425,7 +441,7 @@ function handleFilterChange() {
     fetchLeads();
 }
 
-// FIXED: renderLeads function with consistent actions column and debugging
+// FIXED: renderLeads function with pending status support
 function renderLeads() {
     console.log('renderLeads called with', allLeads.length, 'leads');
     
@@ -445,7 +461,17 @@ function renderLeads() {
         table.style.display = 'none';
         paginationEl.style.display = 'none';
         emptyState.querySelector('h3').textContent = 'No leads found';
-        emptyState.querySelector('p').textContent = currentSearchTerm ? `No results for "${currentSearchTerm}"` : `No ${currentView} leads. Try importing some!`;
+        
+        let emptyMessage = `No ${currentView} leads. Try importing some!`;
+        if (currentSearchTerm) {
+            emptyMessage = `No results for "${currentSearchTerm}"`;
+        } else if (currentView === 'pending') {
+            emptyMessage = 'No leads are currently being processed by Zapier';
+        } else if (currentView === 'contacted') {
+            emptyMessage = 'No contacted leads yet. Send some leads to Zapier!';
+        }
+        
+        emptyState.querySelector('p').textContent = emptyMessage;
         return;
     }
 
@@ -456,7 +482,7 @@ function renderLeads() {
     console.log('About to render', allLeads.length, 'lead rows');
 
     allLeads.forEach((lead, index) => {
-        console.log(`Rendering lead ${index + 1}:`, lead.name);
+        console.log(`Rendering lead ${index + 1}:`, lead.name, `(Status: ${lead.status})`);
         
         const tr = document.createElement('tr');
         
@@ -466,6 +492,10 @@ function renderLeads() {
         checkbox.type = 'checkbox';
         checkbox.checked = selectedLeads.has(lead.id);
         checkbox.onchange = () => toggleLead(lead.id);
+        // Disable checkbox for pending leads since they can't be acted upon
+        if (lead.status === 'pending') {
+            checkbox.disabled = true;
+        }
         tdCheckbox.appendChild(checkbox);
         tr.appendChild(tdCheckbox);
         
@@ -479,7 +509,14 @@ function renderLeads() {
         
         // Status column (4)
         const tdStatus = document.createElement('td');
-        tdStatus.innerHTML = `<span class="status-badge status-${escapeHTML(lead.status)}">${escapeHTML(lead.status.charAt(0).toUpperCase() + lead.status.slice(1))}</span>`;
+        let statusDisplay = lead.status.charAt(0).toUpperCase() + lead.status.slice(1);
+        
+        // Special handling for pending status
+        if (lead.status === 'pending') {
+            statusDisplay += ' (Processing...)';
+        }
+        
+        tdStatus.innerHTML = `<span class="status-badge status-${escapeHTML(lead.status)}">${escapeHTML(statusDisplay)}</span>`;
         tr.appendChild(tdStatus);
         
         // Company column (5)
@@ -492,15 +529,20 @@ function renderLeads() {
         
         let actionsHTML = '';
         
-        // Validation button or status
-        if (!lead.validation || lead.validation.result === 'unknown') {
-            actionsHTML += `<button class="btn btn-secondary btn-sm" onclick="validateSingleEmail(${lead.id}, this)">📧 Check</button>`;
+        if (lead.status === 'pending') {
+            // For pending leads, show a waiting indicator
+            actionsHTML += `<div class="pending-indicator">⏳ Waiting for Zapier...</div>`;
         } else {
-            actionsHTML += buildValidationBadge(lead.validation);
+            // Validation button or status
+            if (!lead.validation || lead.validation.result === 'unknown') {
+                actionsHTML += `<button class="btn btn-secondary btn-sm" onclick="validateSingleEmail(${lead.id}, this)">📧 Check</button>`;
+            } else {
+                actionsHTML += buildValidationBadge(lead.validation);
+            }
+            
+            // Delete button
+            actionsHTML += `<button class="btn btn-danger btn-sm" onclick="deleteLead(${lead.id})">🗑️ Delete</button>`;
         }
-        
-        // Delete button
-        actionsHTML += `<button class="btn btn-danger btn-sm" onclick="deleteLead(${lead.id})">🗑️ Delete</button>`;
         
         tdActions.innerHTML = actionsHTML;
         tr.appendChild(tdActions);
