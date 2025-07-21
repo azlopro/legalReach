@@ -1,3 +1,4 @@
+// backend/handlers.go
 package main
 
 import (
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -324,6 +326,8 @@ func processImportJob(jobID uint) {
 	}
 	companyCol, companyOK := columnMap["company"]
 
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
 	for i, record := range records[1:] {
 		job.ProcessedRows = i + 1
 
@@ -332,7 +336,8 @@ func processImportJob(jobID uint) {
 		}
 		name := strings.TrimSpace(record[nameCol])
 		email := strings.ToLower(strings.TrimSpace(record[emailCol]))
-		if name == "" || email == "" {
+		if name == "" || email == "" || !emailRegex.MatchString(email) {
+			log.Printf("Skipping lead with invalid email format or empty name/email. Email: %s", email)
 			continue
 		}
 
