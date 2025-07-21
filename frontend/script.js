@@ -33,6 +33,7 @@ function createCell(text) {
     td.textContent = text || '';
     return td;
 }
+
 // Enhanced data refresh function with retry logic
 async function refreshAllData(retries = 3) {
     console.log('Refreshing all data...');
@@ -173,7 +174,7 @@ async function apiFetch(endpoint, options = {}) {
     }
 }
 
-// Enhanced fetchLeads function
+// FIXED: Enhanced fetchLeads function with proper header management
 async function fetchLeads() {
     try {
         console.log('Fetching leads for view:', currentView);
@@ -183,8 +184,6 @@ async function fetchLeads() {
         if (currentValidationFilter) {
             endpoint += `&validation_result=${currentValidationFilter}`;
         }
-
-        updateTableHeaders(); // Ensure headers are correct for the current view
 
         if (currentView === 'disputed') {
             endpoint = `/api/disputes?page=${currentPage}&per_page=${leadsPerPage}`;
@@ -205,6 +204,7 @@ async function fetchLeads() {
 
         updateButtons();
         console.log('Leads fetched successfully:', allLeads.length, 'leads');
+        console.log('Table headers after fetch:', document.getElementById('tableHeader').innerHTML);
     } catch (error) {
         console.error('Failed to fetch leads:', error);
     }
@@ -301,6 +301,7 @@ function updateStatsDisplay() {
     }
 }
 
+// FIXED: Consistent table headers for all views
 function updateTableHeaders() {
     const tableHeader = document.getElementById('tableHeader');
     if (currentView === 'disputed') {
@@ -351,7 +352,6 @@ function buildValidationBadge(validation) {
     }
     return `<div class="validation-details">${validationBadge}${serviceBadge}</div>`;
 }
-
 
 async function validateSingleEmail(leadId, btn) {
     const originalText = btn.innerHTML;
@@ -409,7 +409,6 @@ function switchView(view) {
         markContactedBtn.style.display = 'inline-flex';
     }
     
-    updateTableHeaders(); // This line is correctly placed here.
     updateStatsDisplay();
     refreshAllData();
 }
@@ -426,11 +425,18 @@ function handleFilterChange() {
     fetchLeads();
 }
 
+// FIXED: renderLeads function with consistent actions column and debugging
 function renderLeads() {
+    console.log('renderLeads called with', allLeads.length, 'leads');
+    
     const tbody = document.getElementById('leadsTableBody');
     const emptyState = document.getElementById('emptyState');
     const table = document.querySelector('.table-container table');
     const paginationEl = document.getElementById('pagination');
+
+    // FIXED: Ensure table headers are set before rendering
+    updateTableHeaders();
+    console.log('Headers set in renderLeads:', document.getElementById('tableHeader').innerHTML);
 
     tbody.innerHTML = ''; // Clear previous content
 
@@ -447,10 +453,14 @@ function renderLeads() {
     table.style.display = 'table';
     paginationEl.style.display = 'flex';
 
-    allLeads.forEach(lead => {
+    console.log('About to render', allLeads.length, 'lead rows');
+
+    allLeads.forEach((lead, index) => {
+        console.log(`Rendering lead ${index + 1}:`, lead.name);
+        
         const tr = document.createElement('tr');
         
-        // Checkbox column
+        // Checkbox column (1)
         const tdCheckbox = document.createElement('td');
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
@@ -459,24 +469,24 @@ function renderLeads() {
         tdCheckbox.appendChild(checkbox);
         tr.appendChild(tdCheckbox);
         
-        // Name column
+        // Name column (2)
         const tdName = createCell(lead.name);
         tr.appendChild(tdName);
         
-        // Email column
+        // Email column (3)
         const tdEmail = createCell(lead.email);
         tr.appendChild(tdEmail);
         
-        // Status column
+        // Status column (4)
         const tdStatus = document.createElement('td');
         tdStatus.innerHTML = `<span class="status-badge status-${escapeHTML(lead.status)}">${escapeHTML(lead.status.charAt(0).toUpperCase() + lead.status.slice(1))}</span>`;
         tr.appendChild(tdStatus);
         
-        // Company column
+        // Company column (5)
         const tdCompany = createCell(lead.company || '-');
         tr.appendChild(tdCompany);
         
-        // Actions column - FIXED TO ENSURE IT'S ALWAYS RENDERED
+        // FIXED: Actions column (6) - ALWAYS render this column
         const tdActions = document.createElement('td');
         tdActions.className = 'actions-cell';
         
@@ -495,8 +505,13 @@ function renderLeads() {
         tdActions.innerHTML = actionsHTML;
         tr.appendChild(tdActions);
         
+        console.log(`Lead ${index + 1} row has ${tr.children.length} columns`);
         tbody.appendChild(tr);
     });
+
+    console.log('Finished rendering all leads. Table structure:');
+    console.log('Headers:', document.querySelectorAll('#tableHeader th').length);
+    console.log('First row cells:', tbody.firstChild?.children.length || 0);
 
     renderPagination();
     updateSelectAllCheckbox();
@@ -518,6 +533,7 @@ async function deleteLead(leadId) {
     }
 }
 
+// FIXED: renderDisputedLeads function with consistent actions column
 function renderDisputedLeads(leadsWithDetails) {
     const tbody = document.getElementById('leadsTableBody');
     const emptyState = document.getElementById('emptyState');
@@ -587,6 +603,7 @@ function renderDisputedLeads(leadsWithDetails) {
         }
         tr.appendChild(tdValidation);
 
+        // FIXED: Actions column for disputed view - always render
         const tdDisputeActions = document.createElement('td');
         tdDisputeActions.className = 'actions-cell';
         tdDisputeActions.innerHTML = `

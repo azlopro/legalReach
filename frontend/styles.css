@@ -214,6 +214,7 @@ body {
     transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4);
 }
+
 .btn-sm {
     padding: 5px 10px;
     font-size: 12px;
@@ -237,6 +238,7 @@ body {
 table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
 }
 
 th {
@@ -259,6 +261,39 @@ td {
 
 tr:hover {
     background: #f8fafc;
+}
+
+/* FIXED: Actions column styling - consolidated and cleaned up */
+.actions-cell {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    min-width: 180px !important;
+    width: 180px !important;
+    flex-wrap: wrap !important;
+}
+
+/* Ensure 6th column (Actions) is always visible */
+th:nth-child(6), 
+td:nth-child(6) {
+    width: 180px !important;
+    min-width: 180px !important;
+    display: table-cell !important;
+}
+
+.validation-details {
+    font-size: 12px;
+    display: block;
+}
+
+.loading-small {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    border-top-color: #4a5568;
+    animation: spin 1s ease-in-out infinite;
 }
 
 .status-badge {
@@ -298,6 +333,12 @@ tr:hover {
     background: #fed7d7;
     color: #e53e3e;
     border: 1px solid #e53e3e;
+}
+
+.status-pending {
+    background: #fff7ed;
+    color: #ea580c;
+    border: 1px solid #ea580c;
 }
 
 .status-disputed {
@@ -341,7 +382,8 @@ tr:hover {
     background: #fdf2f8;
     color: #d53f8c;
 }
-.conflict-contacted-company-domain { /* ADD THIS ENTIRE BLOCK */
+
+.conflict-contacted-company-domain {
     background: #eef2ff;
     color: #4338ca;
 }
@@ -370,7 +412,6 @@ tr:hover {
     color: #718096;
 }
 
-/* NEW: Service indicator styles */
 .service-indicator {
     padding: 2px 6px;
     border-radius: 6px;
@@ -429,24 +470,6 @@ tr:hover {
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
     border-color: transparent;
-}
-.actions-cell {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 150px;
-}
-.validation-details {
-    font-size: 12px;
-}
-.loading-small {
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    border: 2px solid rgba(0, 0, 0, 0.2);
-    border-radius: 50%;
-    border-top-color: #4a5568;
-    animation: spin 1s ease-in-out infinite;
 }
 
 .modal {
@@ -687,7 +710,6 @@ tr:hover {
     margin-bottom: 5px;
 }
 
-/* NEW: Validation service info box */
 .validation-service-info {
     background: #f0f9ff;
     border: 2px solid #3b82f6;
